@@ -22,7 +22,7 @@
 - [x] 画像/ローカルツール StepKind 用のインターフェースとダミー（もしくは CLI 呼び出し）実装を追加。
 
 ### ストア / 永続化
-- [ ] MemoryStore を拡張し、`StepCheckpoint` を保持・再利用する API を追加。
+- [x] MemoryStore を拡張し、`StepCheckpoint` を保持・再利用する API を追加。
 - [ ] オプションでファイル or SQLite バックエンドに差し替えられるストアインターフェースを設計。
 - [ ] Job / StepExecution の `clone` ロジックを統合テストし、データ破損や共有参照を防ぐ。
 

@@ -16,13 +16,17 @@ var (
 
 // MemoryStore keeps job data in-memory for local development.
 type MemoryStore struct {
-	mu   sync.RWMutex
-	jobs map[string]*engine.Job
+	mu           sync.RWMutex
+	jobs         map[string]*engine.Job
+	checkpoints  map[string]map[engine.StepID][]engine.ResultItem
 }
 
 // NewMemoryStore initializes a new in-memory store.
 func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{jobs: map[string]*engine.Job{}}
+	return &MemoryStore{
+		jobs:        map[string]*engine.Job{},
+		checkpoints: map[string]map[engine.StepID][]engine.ResultItem{},
+	}
 }
 
 // CreateJob stores a brand-new job.
@@ -101,3 +105,72 @@ func cloneJob(job *engine.Job) *engine.Job {
 
 // Ensure MemoryStore implements the JobStore interface.
 var _ engine.JobStore = (*MemoryStore)(nil)
+
+// StepCheckpointStore exposes persistence operations for step checkpoints.
+type StepCheckpointStore interface {
+	SaveCheckpoint(jobID string, stepID engine.StepID, items []engine.ResultItem)
+	LoadCheckpoints(jobID string) map[engine.StepID][]engine.ResultItem
+	ClearCheckpoints(jobID string)
+}
+
+func (s *MemoryStore) SaveCheckpoint(jobID string, stepID engine.StepID, items []engine.ResultItem) {
+	if len(items) == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.checkpoints[jobID]; !ok {
+		s.checkpoints[jobID] = map[engine.StepID][]engine.ResultItem{}
+	}
+	s.checkpoints[jobID][stepID] = cloneResultItems(items)
+}
+
+func (s *MemoryStore) LoadCheckpoints(jobID string) map[engine.StepID][]engine.ResultItem {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	source := s.checkpoints[jobID]
+	if source == nil {
+		return nil
+	}
+	result := make(map[engine.StepID][]engine.ResultItem, len(source))
+	for stepID, items := range source {
+		result[stepID] = cloneResultItems(items)
+	}
+	return result
+}
+
+func (s *MemoryStore) ClearCheckpoints(jobID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.checkpoints, jobID)
+}
+
+func cloneResultItems(items []engine.ResultItem) []engine.ResultItem {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]engine.ResultItem, len(items))
+	for i, item := range items {
+		copyItem := item
+		if item.ShardKey != nil {
+			key := *item.ShardKey
+			copyItem.ShardKey = &key
+		}
+		if data, ok := item.Data.(map[string]any); ok {
+			copyItem.Data = cloneMap(data)
+		}
+		result[i] = copyItem
+	}
+	return result
+}
+
+func cloneMap(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
