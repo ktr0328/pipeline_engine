@@ -72,7 +72,7 @@ func (h *Handler) handleJobs(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		h.createJob(w, r)
 	default:
-		http.NotFound(w, r)
+		writeMethodNotAllowed(w)
 	}
 }
 
@@ -80,7 +80,7 @@ func (h *Handler) handleJobOps(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
 	parts := strings.Split(path, "/")
 	if len(parts) == 0 || parts[0] == "" {
-		http.NotFound(w, r)
+		writeNotFound(w)
 		return
 	}
 
@@ -91,7 +91,7 @@ func (h *Handler) handleJobOps(w http.ResponseWriter, r *http.Request) {
 			h.getJob(w, r, jobID)
 			return
 		}
-		http.NotFound(w, r)
+		writeMethodNotAllowed(w)
 		return
 	}
 
@@ -99,24 +99,24 @@ func (h *Handler) handleJobOps(w http.ResponseWriter, r *http.Request) {
 	switch action {
 	case "stream":
 		if r.Method != http.MethodGet {
-			http.NotFound(w, r)
+			writeMethodNotAllowed(w)
 			return
 		}
 		h.streamExistingJob(w, r, jobID)
 	case "cancel":
 		if r.Method != http.MethodPost {
-			http.NotFound(w, r)
+			writeMethodNotAllowed(w)
 			return
 		}
 		h.cancelJob(w, r, jobID)
 	case "rerun":
 		if r.Method != http.MethodPost {
-			http.NotFound(w, r)
+			writeMethodNotAllowed(w)
 			return
 		}
 		h.rerunJob(w, r, jobID)
 	default:
-		http.NotFound(w, r)
+		writeNotFound(w)
 	}
 }
 
@@ -324,4 +324,12 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeNotFound(w http.ResponseWriter) {
+	writeAPIError(w, http.StatusNotFound, "not_found", "resource not found", nil)
+}
+
+func writeMethodNotAllowed(w http.ResponseWriter) {
+	writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", nil)
 }

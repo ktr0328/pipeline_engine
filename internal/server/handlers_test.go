@@ -284,6 +284,48 @@ func TestHandlerRerunJob(t *testing.T) {
 	}
 }
 
+func TestHandlerMethodNotAllowed(t *testing.T) {
+	t.Parallel()
+
+	mux := newTestMux(&stubEngine{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/jobs", nil)
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	assertStatus(t, resp.Code, http.StatusMethodNotAllowed)
+
+	var payload struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	decodeJSON(t, resp.Body.Bytes(), &payload)
+	if payload.Error.Code != "method_not_allowed" {
+		t.Fatalf("method_not_allowed エラーが返りません: %+v", payload)
+	}
+}
+
+func TestHandlerUnknownActionReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	mux := newTestMux(&stubEngine{})
+	req := httptest.NewRequest(http.MethodPost, "/v1/jobs/job-123/unknown", nil)
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	assertStatus(t, resp.Code, http.StatusNotFound)
+
+	var payload struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	decodeJSON(t, resp.Body.Bytes(), &payload)
+	if payload.Error.Code != "not_found" {
+		t.Fatalf("not_found エラーが返りません: %+v", payload)
+	}
+}
+
 type stubEngine struct {
 	runJobFunc       func(ctx context.Context, req engine.JobRequest) (*engine.Job, error)
 	runJobStreamFunc func(ctx context.Context, req engine.JobRequest) (<-chan engine.StreamingEvent, *engine.Job, error)
