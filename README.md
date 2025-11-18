@@ -31,6 +31,89 @@ internal/store       # Job を保持するストア実装 (MemoryStore)。
 pkg/                 # 共有ライブラリを追加予定の空ディレクトリ。
 ```
 
+## プロバイダ設定例
+`engine.NewBasicEngineWithConfig` に `EngineConfig` を渡すことで、OpenAI や Ollama など複数の ProviderProfile を登録できます。Step 定義側で `provider_profile_id` と `provider_override` を指定すると、プロファイルの値を上書きして特定のモデルやエンドポイントを利用できます。
+
+```go
+cfg := &engine.EngineConfig{
+    Providers: []engine.ProviderProfile{
+        {
+            ID:           engine.ProviderProfileID("openai-main"),
+            Kind:         engine.ProviderOpenAI,
+            BaseURI:      "https://api.openai.com/v1",
+            APIKey:       os.Getenv("OPENAI_API_KEY"),
+            DefaultModel: "gpt-4o-mini",
+        },
+        {
+            ID:           engine.ProviderProfileID("ollama-local"),
+            Kind:         engine.ProviderOllama,
+            BaseURI:      "http://127.0.0.1:11434",
+            DefaultModel: "llama3",
+        },
+    },
+}
+eng := engine.NewBasicEngineWithConfig(store.NewMemoryStore(), cfg)
+```
+
+Step 側の例:
+
+```json
+{
+  "id": "final_summary",
+  "kind": "llm",
+  "mode": "single",
+  "provider_profile_id": "openai-main",
+  "provider_override": {
+    "default_model": "gpt-4o"
+  },
+  "prompt": {
+    "system": "You are a helpful assistant.",
+    "user": "Summarize the context: {{range .Sources}}{{.Content}}\n{{end}}"
+  },
+  "output_type": "markdown",
+  "export": true
+}
+```
+
+## DAG / パイプライン例
+複数 Step を `depends_on` で繋ぐことで DAG を表現します。下記はログ解析 → サマリー生成 → レポート整形の 3 ステップ構成です。
+
+```json
+{
+  "type": "system_log_analysis",
+  "version": "v1",
+  "steps": [
+    {
+      "id": "parse_logs",
+      "name": "Parse Logs",
+      "kind": "map",
+      "mode": "fanout",
+      "output_type": "text",
+      "export": true
+    },
+    {
+      "id": "summarize",
+      "name": "Summarize",
+      "kind": "llm",
+      "mode": "per_item",
+      "depends_on": ["parse_logs"],
+      "provider_profile_id": "openai-main",
+      "output_type": "markdown",
+      "export": true
+    },
+    {
+      "id": "report",
+      "name": "Report",
+      "kind": "llm",
+      "depends_on": ["summarize"],
+      "provider_profile_id": "openai-main",
+      "output_type": "markdown",
+      "export": true
+    }
+  ]
+}
+```
+
 ## セットアップ
 1. Go 1.22 以降を用意します。
 2. 依存関係は `go.mod` の標準ライブラリのみなので追加の `go mod download` は不要です。
@@ -88,9 +171,15 @@ curl -N -H "Content-Type: application/json" \
 
 `/v1/jobs/{id}/stream` に対して GET することで、既存ジョブのステータスを監視することもできます。代表的なイベント種別は以下の通りです。
 
-- `job_started` / `job_status` / `job_completed`（or `job_failed`, `job_cancelled`）
-- `step_started` / `step_completed` / `step_failed`
-- `item_completed`（ResultItem が追加されるたびに送出）
+| Event 名            | 説明 |
+| ------------------- | ---- |
+| `job_status`        | ジョブの状態が変化したときに送出されるフル状態 |
+| `job_started`       | `queued -> running` の遷移時に 1 度だけ送出 |
+| `job_completed`     | 正常終了。失敗・キャンセル時は `job_failed` / `job_cancelled` |
+| `step_started`      | 各 StepExecution が `running` になったタイミング |
+| `step_completed`    | StepExecution が `success` で完了したタイミング（失敗時は `step_failed`） |
+| `item_completed`    | Export 指定された ResultItem が生成されるたびに送出 |
+| `error`             | ストリーミング取得中にサーバー側でエラーが発生した場合 |
 
 ### キャンセルとリラン
 ```bash

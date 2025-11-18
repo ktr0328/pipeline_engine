@@ -56,6 +56,6 @@
 - [ ] 常駐サジェスタアプリ / フローベース UI / CLI 連携ツールの試作。
 
 ## 📚 ドキュメントタスク
-- [ ] README に Provider 設定例と DAG 例、ストリームイベント仕様を追記。
+- [x] README に Provider 設定例と DAG 例、ストリームイベント仕様を追記。
 - [ ] `docs/詳細設計書.md` を最新実装へ随時更新（特に §5 HTTP API と §6 Engine 挙動）。
 - [ ] ImplementationPlan をアップデートし、完了タスクと次フェーズを明示。
