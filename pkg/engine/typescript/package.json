@@ -10,7 +10,7 @@
     "lint": "tsc --noEmit",
     "engine:download": "node ./scripts/ensure-binary.mjs",
     "postinstall": "node ./scripts/postinstall.mjs",
-    "test": "node --import tsx --test src/**/*.test.ts test/**/*.test.ts"
+    "test": "node ./scripts/run-tests.mjs"
   },
   "files": [
     "bin",
