@@ -117,12 +117,21 @@ Step 側の例:
 ## セットアップ
 1. Go 1.22 以降を用意します。
 2. 依存関係は `go.mod` の標準ライブラリのみなので追加の `go mod download` は不要です。
-3. サーバーを起動します。
+3. サーバーを起動します（`make run` でも可）。
 
 ```bash
 go run ./cmd/pipeline-engine
 # PIPELINE_ENGINE_ADDR="127.0.0.1:9000" go run ./cmd/pipeline-engine で待受ポートを変更できます。
 ```
+
+### よく使う Make タスク
+
+| コマンド | 説明 |
+| ------ | ---- |
+| `make test` | `go test ./...` を実行 |
+| `make run` | `PIPELINE_ENGINE_ADDR` を指定してサーバーを起動 |
+| `make dev` | テストを実行後、そのままサーバーを起動（簡易開発ループ） |
+| `make build` | CLI バイナリをビルド |
 
 ## クイックスタート
 ### ヘルスチェック
