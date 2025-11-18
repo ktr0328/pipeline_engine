@@ -38,6 +38,11 @@ type JobStore interface {
 	ListJobs() ([]*Job, error)
 }
 
+// EngineConfig describes runtime configuration for the engine.
+type EngineConfig struct {
+	Providers []ProviderProfile
+}
+
 // BasicEngine is a naive single-node engine implementation intended for the v0 milestone.
 type BasicEngine struct {
 	store        JobStore
@@ -49,16 +54,34 @@ type BasicEngine struct {
 	jobPipeMu    sync.RWMutex
 	checkpointMu sync.RWMutex
 	checkpoints  map[string]map[StepID][]ResultItem
+	providers    *ProviderRegistry
 }
 
 // NewBasicEngine returns an Engine implementation backed by the provided store.
 func NewBasicEngine(store JobStore) *BasicEngine {
+	return NewBasicEngineWithConfig(store, nil)
+}
+
+// NewBasicEngineWithConfig wires the engine with the provided configuration.
+func NewBasicEngineWithConfig(store JobStore, cfg *EngineConfig) *BasicEngine {
+	reg := NewProviderRegistry()
+	RegisterDefaultProviderFactories(reg)
+	for _, profile := range defaultProviderProfiles() {
+		reg.RegisterProfile(profile)
+	}
+	if cfg != nil {
+		for _, profile := range cfg.Providers {
+			reg.RegisterProfile(profile)
+		}
+	}
+
 	return &BasicEngine{
 		store:       store,
 		cancels:     map[string]context.CancelFunc{},
 		pipelines:   map[PipelineType]*PipelineDef{},
 		jobPipeline: map[string]*PipelineDef{},
 		checkpoints: map[string]map[StepID][]ResultItem{},
+		providers:   reg,
 	}
 }
 
@@ -541,35 +564,101 @@ func (e *BasicEngine) runStep(ctx context.Context, job *Job, step StepDef, promp
 
 	time.Sleep(100 * time.Millisecond)
 
+	provider, profile := e.resolveProvider(step)
+	inputCtx := ProviderInput{
+		Sources:  job.Input.Sources,
+		Options:  job.Input.Options,
+		Previous: outputs,
+	}
+
 	switch step.Mode {
 	case StepModeFanOut:
-		return buildFanOutResults(step, job, prompt), nil
+		return e.runFanOutStep(ctx, provider, profile, step, job, prompt, inputCtx)
 	case StepModePerItem:
 		var base []ResultItem
 		if len(step.DependsOn) > 0 {
-			if depItems, ok := outputs[step.DependsOn[len(step.DependsOn)-1]]; ok && len(depItems) > 0 {
-				base = depItems
+			lastDep := step.DependsOn[len(step.DependsOn)-1]
+			if items, ok := outputs[lastDep]; ok {
+				base = items
 			}
 		}
 		if len(base) == 0 {
-			return buildFanOutResults(step, job, prompt), nil
+			return e.runFanOutStep(ctx, provider, profile, step, job, prompt, inputCtx)
 		}
-		return buildPerItemResults(step, base, prompt), nil
+		return e.runPerItemStep(ctx, provider, profile, step, job, prompt, inputCtx, base)
 	default:
-		return []ResultItem{buildSingleResult(step, job, prompt)}, nil
+		return e.runSingleStep(ctx, provider, profile, step, job, prompt, inputCtx)
 	}
 }
 
-func buildSingleResult(step StepDef, job *Job, prompt string) ResultItem {
+func (e *BasicEngine) runSingleStep(ctx context.Context, provider Provider, profile ProviderProfile, step StepDef, job *Job, prompt string, input ProviderInput) ([]ResultItem, error) {
+	text, meta, err := e.callProvider(ctx, provider, profile, step, prompt, input)
+	if err != nil {
+		return nil, err
+	}
+	if text == "" {
+		text = fmt.Sprintf("step %s processed %d sources", step.ID, len(job.Input.Sources))
+	}
+	item := buildSingleResult(step, job, prompt, text, meta)
+	return []ResultItem{item}, nil
+}
+
+func (e *BasicEngine) runFanOutStep(ctx context.Context, provider Provider, profile ProviderProfile, step StepDef, job *Job, prompt string, input ProviderInput) ([]ResultItem, error) {
+	if len(job.Input.Sources) == 0 {
+		return e.runSingleStep(ctx, provider, profile, step, job, prompt, input)
+	}
+	items := make([]ResultItem, len(job.Input.Sources))
+	for i, src := range job.Input.Sources {
+		localInput := input
+		localInput.Sources = []Source{src}
+		text, meta, err := e.callProvider(ctx, provider, profile, step, prompt, localInput)
+		if err != nil {
+			return nil, err
+		}
+		if text == "" {
+			text = fmt.Sprintf("step %s handled source %s", step.ID, src.Label)
+		}
+		items[i] = buildFanOutResult(step, prompt, src, i, text, meta)
+	}
+	return items, nil
+}
+
+func (e *BasicEngine) runPerItemStep(ctx context.Context, provider Provider, profile ProviderProfile, step StepDef, job *Job, prompt string, input ProviderInput, base []ResultItem) ([]ResultItem, error) {
+	items := make([]ResultItem, len(base))
+	for i, prev := range base {
+		localInput := input
+		localInput.Previous = map[StepID][]ResultItem{
+			prev.StepID: {prev},
+		}
+		text, meta, err := e.callProvider(ctx, provider, profile, step, prompt, localInput)
+		if err != nil {
+			return nil, err
+		}
+		if text == "" {
+			shard := ""
+			if prev.ShardKey != nil {
+				shard = *prev.ShardKey
+			} else {
+				shard = fmt.Sprintf("%s-%d", step.ID, i)
+			}
+			text = fmt.Sprintf("step %s refined shard %s", step.ID, shard)
+		}
+		items[i] = buildPerItemResult(step, prompt, prev, i, text, meta)
+	}
+	return items, nil
+}
+
+func buildSingleResult(step StepDef, job *Job, prompt, text string, meta map[string]any) ResultItem {
 	label := step.Name
 	if label == "" {
 		label = string(step.ID)
 	}
 	data := map[string]any{
-		"text":         fmt.Sprintf("step %s processed %d sources", step.ID, len(job.Input.Sources)),
+		"text":         text,
 		"prompt":       prompt,
 		"pipelineType": job.PipelineType,
 	}
+	mergeMeta(data, meta)
 	return ResultItem{
 		ID:          generateID(),
 		Label:       label,
@@ -580,55 +669,86 @@ func buildSingleResult(step StepDef, job *Job, prompt string) ResultItem {
 	}
 }
 
-func buildFanOutResults(step StepDef, job *Job, prompt string) []ResultItem {
-	if len(job.Input.Sources) == 0 {
-		return []ResultItem{buildSingleResult(step, job, prompt)}
+func buildFanOutResult(step StepDef, prompt string, src Source, idx int, text string, meta map[string]any) ResultItem {
+	label := step.Name
+	if label == "" {
+		label = string(step.ID)
 	}
-	items := make([]ResultItem, len(job.Input.Sources))
-	for i, src := range job.Input.Sources {
-		shard := fmt.Sprintf("%s-%d", step.ID, i)
-		data := map[string]any{
-			"text":        fmt.Sprintf("step %s handled source %s", step.ID, src.Label),
-			"prompt":      prompt,
-			"source_kind": src.Kind,
-			"source":      src.Content,
-		}
-		items[i] = ResultItem{
-			ID:          generateID(),
-			Label:       fmt.Sprintf("%s#%d", step.Name, i+1),
-			StepID:      step.ID,
-			ShardKey:    ptrString(shard),
-			Kind:        string(step.Kind),
-			ContentType: ensureContentType(step.OutputType),
-			Data:        data,
-		}
+	data := map[string]any{
+		"text":        text,
+		"prompt":      prompt,
+		"source_kind": src.Kind,
+		"source":      src.Content,
 	}
-	return items
+	mergeMeta(data, meta)
+	shard := fmt.Sprintf("%s-%d", step.ID, idx)
+	return ResultItem{
+		ID:          generateID(),
+		Label:       fmt.Sprintf("%s#%d", label, idx+1),
+		StepID:      step.ID,
+		ShardKey:    ptrString(shard),
+		Kind:        string(step.Kind),
+		ContentType: ensureContentType(step.OutputType),
+		Data:        data,
+	}
 }
 
-func buildPerItemResults(step StepDef, base []ResultItem, prompt string) []ResultItem {
-	items := make([]ResultItem, len(base))
-	for i, prev := range base {
-		shard := fmt.Sprintf("%s-%d", step.ID, i)
-		if prev.ShardKey != nil {
-			shard = *prev.ShardKey
-		}
-		data := map[string]any{
-			"text":          fmt.Sprintf("step %s refined shard %s", step.ID, shard),
-			"prompt":        prompt,
-			"previous_step": prev.StepID,
-		}
-		items[i] = ResultItem{
-			ID:          generateID(),
-			Label:       fmt.Sprintf("%s#%d", step.Name, i+1),
-			StepID:      step.ID,
-			ShardKey:    ptrString(shard),
-			Kind:        string(step.Kind),
-			ContentType: ensureContentType(step.OutputType),
-			Data:        data,
-		}
+func buildPerItemResult(step StepDef, prompt string, prev ResultItem, idx int, text string, meta map[string]any) ResultItem {
+	shard := fmt.Sprintf("%s-%d", step.ID, idx)
+	if prev.ShardKey != nil {
+		shard = *prev.ShardKey
 	}
-	return items
+	data := map[string]any{
+		"text":          text,
+		"prompt":        prompt,
+		"previous_step": prev.StepID,
+	}
+	mergeMeta(data, meta)
+	return ResultItem{
+		ID:          generateID(),
+		Label:       fmt.Sprintf("%s#%d", step.Name, idx+1),
+		StepID:      step.ID,
+		ShardKey:    ptrString(shard),
+		Kind:        string(step.Kind),
+		ContentType: ensureContentType(step.OutputType),
+		Data:        data,
+	}
+}
+
+func (e *BasicEngine) callProvider(ctx context.Context, provider Provider, profile ProviderProfile, step StepDef, prompt string, input ProviderInput) (string, map[string]any, error) {
+	if provider == nil {
+		return "", nil, nil
+	}
+	resp, err := provider.Call(ctx, ProviderRequest{
+		Step:    step,
+		Prompt:  prompt,
+		Profile: profile,
+		Input:   input,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return resp.Output, resp.Metadata, nil
+}
+
+func (e *BasicEngine) resolveProvider(step StepDef) (Provider, ProviderProfile) {
+	if e.providers == nil {
+		return nil, ProviderProfile{}
+	}
+	provider, profile, err := e.providers.Resolve(step)
+	if err != nil {
+		return nil, ProviderProfile{}
+	}
+	return provider, profile
+}
+
+func mergeMeta(dst map[string]any, meta map[string]any) {
+	if len(meta) == 0 {
+		return
+	}
+	for k, v := range meta {
+		dst[k] = v
+	}
 }
 
 func ensureContentType(ct ContentType) ContentType {

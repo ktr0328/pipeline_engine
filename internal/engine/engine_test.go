@@ -266,6 +266,66 @@ func TestBasicEngine_RerunReuseUpstream(t *testing.T) {
 		t.Fatalf("rerun ジョブの結果が空です: %+v", rerunJob.Result)
 	}
 }
+
+func TestBasicEngine_ProviderOverrideApplied(t *testing.T) {
+	t.Parallel()
+
+	memoryStore := store.NewMemoryStore()
+	cfg := &engine.EngineConfig{
+		Providers: []engine.ProviderProfile{
+			{
+				ID:           engine.ProviderProfileID("custom-openai"),
+				Kind:         engine.ProviderOpenAI,
+				DefaultModel: "gpt-dummy",
+			},
+		},
+	}
+	eng := engine.NewBasicEngineWithConfig(memoryStore, cfg)
+
+	pipeline := engine.PipelineDef{
+		Type:    "provider_pipeline",
+		Version: "v1",
+		Steps: []engine.StepDef{
+			{
+				ID:                engine.StepID("summarize"),
+				Name:              "Summarize",
+				Kind:              engine.StepKindLLM,
+				Mode:              engine.StepModeSingle,
+				OutputType:        engine.ContentText,
+				Export:            true,
+				ProviderProfileID: engine.ProviderProfileID("custom-openai"),
+				ProviderOverride: map[string]any{
+					"default_model": "gpt-override",
+				},
+			},
+		},
+	}
+	eng.RegisterPipeline(pipeline)
+
+	req := sampleJobRequest()
+	req.PipelineType = pipeline.Type
+
+	job, err := eng.RunJob(context.Background(), req)
+	if err != nil {
+		t.Fatalf("provider pipeline ジョブの起動に失敗しました: %v", err)
+	}
+
+	finalJob := waitForJobStatus(t, memoryStore, job.ID, engine.JobStatusSucceeded, 3*time.Second)
+	if finalJob.Result == nil || len(finalJob.Result.Items) == 0 {
+		t.Fatalf("provider pipeline の結果が空です: %+v", finalJob.Result)
+	}
+
+	data, ok := finalJob.Result.Items[0].Data.(map[string]any)
+	if !ok {
+		t.Fatalf("結果データを map へ変換できません: %+v", finalJob.Result.Items[0].Data)
+	}
+	if got := data["model"]; got != "gpt-override" {
+		t.Fatalf("プロバイダ override が反映されていません: %v", got)
+	}
+	if got := data["provider"]; got != "openai" {
+		t.Fatalf("プロバイダ種別が想定外です: %v", got)
+	}
+}
 func waitForJobStatus(t *testing.T, jobStore engine.JobStore, jobID string, expected engine.JobStatus, timeout time.Duration) *engine.Job {
 	t.Helper()
 

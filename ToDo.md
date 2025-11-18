@@ -16,10 +16,10 @@
 - [x] `JobRequest.Mode` の sync 実行パスとレスポンス分岐を整備 (docs/詳細設計書.md §5.2)。
 
 ### Provider 層
-- [ ] ProviderRegistry に OpenAI / Ollama / Image / LocalTool プロバイダを登録・切替できる設定レイヤを実装。
+- [x] ProviderRegistry に OpenAI / Ollama / Image / LocalTool プロバイダを登録・切替できる設定レイヤを実装。
 - [ ] OllamaProvider / OpenAIProvider で実 API 呼び出しを実装し、リトライ・タイムアウト・エラーハンドリングを付与。
-- [ ] Step ごとの `ProviderOverride` を ProviderProfile にマージする解決順序（ImplementationPlan §1）を実装。
-- [ ] 画像/ローカルツール StepKind 用のインターフェースとダミー（もしくは CLI 呼び出し）実装を追加。
+- [x] Step ごとの `ProviderOverride` を ProviderProfile にマージする解決順序（ImplementationPlan §1）を実装。
+- [x] 画像/ローカルツール StepKind 用のインターフェースとダミー（もしくは CLI 呼び出し）実装を追加。
 
 ### ストア / 永続化
 - [ ] MemoryStore を拡張し、`StepCheckpoint` を保持・再利用する API を追加。
