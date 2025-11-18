@@ -234,6 +234,19 @@ func TestHandlerUpsertProviderProfile(t *testing.T) {
 	}
 }
 
+func TestHandlerUpsertProviderProfileInvalidPayload(t *testing.T) {
+	t.Parallel()
+	stub := &stubEngine{}
+	mux := newTestMux(stub)
+	req := httptest.NewRequest(http.MethodPost, "/v1/config/providers", strings.NewReader(`{"kind":"openai"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+	if resp.Code != http.StatusBadRequest {
+		 t.Fatalf("expected 400 when id missing, got %d", resp.Code)
+	}
+}
+
 func TestHandlerUpdateEngineConfig(t *testing.T) {
 	stor := store.NewMemoryStore()
 	eng := engine.NewBasicEngine(stor)
@@ -243,6 +256,24 @@ func TestHandlerUpdateEngineConfig(t *testing.T) {
 	resp := httptest.NewRecorder()
 	mux.ServeHTTP(resp, req)
 	assertStatus(t, resp.Code, http.StatusOK)
+	var payload map[string]string
+	decodeJSON(t, resp.Body.Bytes(), &payload)
+	if payload["log_level"] != "debug" {
+		 t.Fatalf("expected response log_level debug, got %+v", payload)
+	}
+}
+
+func TestHandlerUpdateEngineConfigRequiresValue(t *testing.T) {
+	stor := store.NewMemoryStore()
+	eng := engine.NewBasicEngine(stor)
+	mux := newTestMux(eng)
+	req := httptest.NewRequest(http.MethodPost, "/v1/config/engine", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+	if resp.Code != http.StatusBadRequest {
+		 t.Fatalf("expected 400 when no config provided, got %d", resp.Code)
+	}
 }
 
 func TestHandlerRerunJob(t *testing.T) {
