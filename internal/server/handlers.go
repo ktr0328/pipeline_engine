@@ -15,7 +15,9 @@ import (
 
 // Handler wires HTTP requests to the engine implementation.
 type Handler struct {
-	engine engine.Engine
+	engine    engine.Engine
+	startedAt time.Time
+	version   string
 }
 
 type rerunRequest struct {
@@ -39,8 +41,14 @@ type apiErrorResponse struct {
 }
 
 // NewHandler creates a Handler.
-func NewHandler(e engine.Engine) *Handler {
-	return &Handler{engine: e}
+func NewHandler(e engine.Engine, startedAt time.Time, version string) *Handler {
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	if version == "" {
+		version = Version
+	}
+	return &Handler{engine: e, startedAt: startedAt, version: version}
 }
 
 // Register registers all HTTP routes.
@@ -51,7 +59,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	payload := map[string]interface{}{
+		"status":     "ok",
+		"version":    h.version,
+		"uptime_sec": time.Since(h.startedAt).Seconds(),
+	}
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func (h *Handler) handleJobs(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +257,7 @@ func (h *Handler) streamExistingJob(w http.ResponseWriter, r *http.Request, jobI
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
-	var lastStatus engine.JobStatus
+	tracker := engine.NewStreamingTracker()
 	for {
 		job, err := h.engine.GetJob(ctx, jobID)
 		if err != nil {
@@ -252,9 +265,8 @@ func (h *Handler) streamExistingJob(w http.ResponseWriter, r *http.Request, jobI
 			return
 		}
 
-		if job.Status != lastStatus {
-			lastStatus = job.Status
-			if err := enc.Encode(engine.StreamingEvent{Event: "job_status", JobID: job.ID, Data: job}); err != nil {
+		for _, event := range tracker.Diff(job) {
+			if err := enc.Encode(event); err != nil {
 				return
 			}
 			if flusher != nil {

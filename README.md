@@ -45,7 +45,7 @@ go run ./cmd/pipeline-engine
 ### ヘルスチェック
 ```bash
 curl -s http://127.0.0.1:8085/health
-# => {"status":"ok"}
+# => {"status":"ok","version":"0.2.0","uptime_sec":1.23}
 ```
 
 ### ジョブの作成
@@ -86,7 +86,11 @@ curl -N -H "Content-Type: application/json" \
   -d '{"pipeline_type":"summarize.v0","input":{"sources":[]}}'
 ```
 
-`/v1/jobs/{id}/stream` に対して GET することで、既存ジョブのステータスを監視することもできます。
+`/v1/jobs/{id}/stream` に対して GET することで、既存ジョブのステータスを監視することもできます。代表的なイベント種別は以下の通りです。
+
+- `job_started` / `job_status` / `job_completed`（or `job_failed`, `job_cancelled`）
+- `step_started` / `step_completed` / `step_failed`
+- `item_completed`（ResultItem が追加されるたびに送出）
 
 ### キャンセルとリラン
 ```bash

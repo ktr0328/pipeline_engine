@@ -329,6 +329,7 @@ func (e *BasicEngine) streamJob(ctx context.Context, ch chan<- StreamingEvent, j
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
+	tracker := NewStreamingTracker()
 	var lastStatus JobStatus
 	for {
 		job, err := e.store.GetJob(jobID)
@@ -339,7 +340,9 @@ func (e *BasicEngine) streamJob(ctx context.Context, ch chan<- StreamingEvent, j
 
 		if job.Status != lastStatus {
 			lastStatus = job.Status
-			ch <- StreamingEvent{Event: "job_status", JobID: job.ID, Data: job}
+		}
+		for _, event := range tracker.Diff(job) {
+			ch <- event
 		}
 
 		if isTerminal(job.Status) {

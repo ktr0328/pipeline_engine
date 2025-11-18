@@ -27,9 +27,9 @@
 - [ ] Job / StepExecution の `clone` ロジックを統合テストし、データ破損や共有参照を防ぐ。
 
 ### HTTP / ストリーミング
-- [ ] `/health` 応答に version / uptime を追加 (docs/詳細設計書.md §5.1)。
-- [ ] `/v1/jobs` の `stream=true` と `/v1/jobs/{id}/stream` で StreamingEvent (`job_started`, `item_completed` など) を網羅的に送出。
-- [ ] `/v1/jobs/{id}/rerun` の `override_input` を反映し、`parent_job_id` を設定した新規 Job を返す。
+- [x] `/health` 応答に version / uptime を追加 (docs/詳細設計書.md §5.1)。
+- [x] `/v1/jobs` の `stream=true` と `/v1/jobs/{id}/stream` で StreamingEvent (`job_started`, `item_completed` など) を網羅的に送出。
+- [x] `/v1/jobs/{id}/rerun` の `override_input` を反映し、`parent_job_id` を設定した新規 Job を返す。
 - [ ] API エラー形式 `{ error: { code, message, details } }` を全エンドポイントで統一。
 
 ### SDK / クライアント

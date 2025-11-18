@@ -20,7 +20,7 @@ func TestHandlerHealth(t *testing.T) {
 	t.Parallel()
 
 	mux := http.NewServeMux()
-	handler := server.NewHandler(&stubEngine{})
+	handler := server.NewHandler(&stubEngine{}, time.Unix(0, 0), "test-version")
 	handler.Register(mux)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -31,13 +31,19 @@ func TestHandlerHealth(t *testing.T) {
 		t.Fatalf("/health のステータスコードが不正です: %d", resp.Code)
 	}
 
-	var payload map[string]string
+	var payload map[string]interface{}
 	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("レスポンスの JSON 解析に失敗しました: %v", err)
 	}
 
 	if payload["status"] != "ok" {
-		t.Fatalf("/health のレスポンスが想定外です: %+v", payload)
+		t.Fatalf("/health の status が想定外です: %+v", payload)
+	}
+	if payload["version"] != "test-version" {
+		t.Fatalf("/health の version が想定外です: %+v", payload)
+	}
+	if _, ok := payload["uptime_sec"]; !ok {
+		t.Fatalf("uptime_sec フィールドが存在しません: %+v", payload)
 	}
 }
 
@@ -55,7 +61,7 @@ func TestHandlerCreateJob(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := server.NewHandler(stub)
+	handler := server.NewHandler(stub, time.Unix(0, 0), "test-version")
 	handler.Register(mux)
 
 	body := bytes.NewBufferString(`{"pipeline_type":"demo","input":{"sources":[]}}`)
@@ -108,7 +114,7 @@ func TestHandlerCancelJob(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := server.NewHandler(stub)
+	handler := server.NewHandler(stub, time.Unix(0, 0), "test-version")
 	handler.Register(mux)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/jobs/job-55/cancel", strings.NewReader(`{"reason":"user aborted"}`))
@@ -147,7 +153,7 @@ func TestHandlerGetJobNotFound(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := server.NewHandler(stub)
+	handler := server.NewHandler(stub, time.Unix(0, 0), "test-version")
 	handler.Register(mux)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/jobs/unknown", nil)

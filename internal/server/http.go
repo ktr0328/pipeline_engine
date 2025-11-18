@@ -2,22 +2,29 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/example/pipeline-engine/internal/engine"
 )
 
+// Version represents the server version exposed via /health.
+const Version = "0.2.0"
+
 // Server is a minimal HTTP server that exposes engine capabilities.
 type Server struct {
-	engine engine.Engine
-	mux    *http.ServeMux
+	engine    engine.Engine
+	mux       *http.ServeMux
+	startedAt time.Time
+	version   string
 }
 
 // NewServer wires the HTTP handlers and returns a Server instance.
 func NewServer(e engine.Engine) *Server {
+	started := time.Now().UTC()
 	mux := http.NewServeMux()
-	handler := NewHandler(e)
+	handler := NewHandler(e, started, Version)
 	handler.Register(mux)
-	return &Server{engine: e, mux: mux}
+	return &Server{engine: e, mux: mux, startedAt: started, version: Version}
 }
 
 // ListenAndServe starts listening on the provided address.
