@@ -2,6 +2,8 @@ package engine_test
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -271,12 +273,18 @@ func TestBasicEngine_ProviderOverrideApplied(t *testing.T) {
 	t.Parallel()
 
 	memoryStore := store.NewMemoryStore()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"dummy"}}]}`))
+	}))
+	defer ts.Close()
 	cfg := &engine.EngineConfig{
 		Providers: []engine.ProviderProfile{
 			{
 				ID:           engine.ProviderProfileID("custom-openai"),
 				Kind:         engine.ProviderOpenAI,
 				DefaultModel: "gpt-dummy",
+				BaseURI:      ts.URL,
+				APIKey:       "test",
 			},
 		},
 	}

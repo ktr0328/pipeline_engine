@@ -1,9 +1,13 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -143,10 +147,22 @@ func RegisterDefaultProviderFactories(reg *ProviderRegistry) {
 // OpenAIProvider is a stub provider that simulates OpenAI responses.
 type OpenAIProvider struct {
 	profile ProviderProfile
+	client  httpDoer
+}
+
+type httpDoer interface {
+	Do(req *http.Request) (*http.Response, error)
 }
 
 func (p *OpenAIProvider) Call(ctx context.Context, req ProviderRequest) (ProviderResponse, error) {
-	return simulateLLMCall(ctx, "openai", p.profile, req)
+	return callOpenAI(ctx, req, p.profile, p.httpClient())
+}
+
+func (p *OpenAIProvider) httpClient() httpDoer {
+	if p.client != nil {
+		return p.client
+	}
+	return &http.Client{Timeout: 30 * time.Second}
 }
 
 // OllamaProvider simulates Ollama responses.
@@ -201,6 +217,88 @@ func simulateLLMCall(ctx context.Context, vendor string, profile ProviderProfile
 	text := fmt.Sprintf("%s (%s) responded to %s", vendor, model, req.Step.ID)
 	meta := map[string]any{
 		"provider": vendor,
+		"model":    model,
+	}
+	return ProviderResponse{Output: text, Metadata: meta}, nil
+}
+
+const openAIKeyEnv = "PIPELINE_ENGINE_OPENAI_API_KEY"
+
+type openAIRequest struct {
+	Model       string          `json:"model"`
+	Messages    []openAIMessage `json:"messages"`
+	Temperature float64         `json:"temperature"`
+}
+
+type openAIMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type openAIResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+}
+
+func callOpenAI(ctx context.Context, req ProviderRequest, profile ProviderProfile, client httpDoer) (ProviderResponse, error) {
+	model := profile.DefaultModel
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
+	apiKey := profile.APIKey
+	if apiKey == "" {
+		apiKey = os.Getenv(openAIKeyEnv)
+	}
+	if apiKey == "" {
+		return ProviderResponse{}, errors.New("openai api key is not configured")
+	}
+	base := profile.BaseURI
+	if base == "" {
+		base = "https://api.openai.com/v1"
+	}
+	url := strings.TrimRight(base, "/") + "/chat/completions"
+
+	messages := []openAIMessage{{Role: "user", Content: req.Prompt}}
+	if sys, ok := req.Profile.Extra["system_prompt"].(string); ok && sys != "" {
+		messages = append([]openAIMessage{{Role: "system", Content: sys}}, messages...)
+	}
+	payload := openAIRequest{Model: model, Messages: messages, Temperature: 0}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return ProviderResponse{}, err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return ProviderResponse{}, err
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return ProviderResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return ProviderResponse{}, fmt.Errorf("openai api error: %s", resp.Status)
+	}
+
+	var decoded openAIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return ProviderResponse{}, err
+	}
+	if len(decoded.Choices) == 0 {
+		return ProviderResponse{}, errors.New("openai response missing choices")
+	}
+
+	text := decoded.Choices[0].Message.Content
+	meta := map[string]any{
+		"provider": "openai",
 		"model":    model,
 	}
 	return ProviderResponse{Output: text, Metadata: meta}, nil

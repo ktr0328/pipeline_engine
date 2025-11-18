@@ -34,6 +34,12 @@ pkg/                 # 共有ライブラリを追加予定の空ディレクト
 ## プロバイダ設定例
 `engine.NewBasicEngineWithConfig` に `EngineConfig` を渡すことで、OpenAI や Ollama など複数の ProviderProfile を登録できます。Step 定義側で `provider_profile_id` と `provider_override` を指定すると、プロファイルの値を上書きして特定のモデルやエンドポイントを利用できます。
 
+**API キーの渡し方**
+
+- OpenAI の場合、`ProviderProfile.APIKey` に直接埋め込むか、環境変数 `PIPELINE_ENGINE_OPENAI_API_KEY` にセットしておくと自動で参照します。
+- `BaseURI` は既定で `https://api.openai.com/v1` ですが、ローカルプロキシやモックサーバーに向けたい場合は上書きできます。
+- Ollama など他プロバイダも同様に、将来的に環境変数でキーを渡せるように設計予定です。
+
 ```go
 cfg := &engine.EngineConfig{
     Providers: []engine.ProviderProfile{
