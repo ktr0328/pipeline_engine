@@ -34,6 +34,19 @@ export interface StepChunk {
   content: string;
 }
 
+export interface ProviderProfileInput {
+  id: string;
+  kind: string;
+  base_uri?: string;
+  api_key?: string;
+  default_model?: string;
+  extra?: Record<string, unknown>;
+}
+
+export interface EngineConfigInput {
+  log_level?: string;
+}
+
 export interface Job {
   id: string;
   pipeline_type: string;

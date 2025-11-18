@@ -1,7 +1,9 @@
 import {
+  EngineConfigInput,
   FetchLike,
   Job,
   JobRequest,
+  ProviderProfileInput,
   StreamingEvent
 } from "./types.js";
 
@@ -52,6 +54,29 @@ export class PipelineEngineClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
+  }
+
+  async upsertProviderProfile(profile: ProviderProfileInput): Promise<void> {
+    const resp = await this.fetchImpl(`${this.baseUrl}/v1/config/providers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile)
+    });
+    if (!resp.ok) {
+      throw new Error(`http error: ${resp.status} ${resp.statusText}`);
+    }
+  }
+
+  async updateEngineConfig(config: EngineConfigInput): Promise<Record<string, unknown>> {
+    const resp = await this.fetchImpl(`${this.baseUrl}/v1/config/engine`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config)
+    });
+    if (!resp.ok) {
+      throw new Error(`http error: ${resp.status} ${resp.statusText}`);
+    }
+    return resp.json();
   }
 
   async streamJobs(req: JobRequest): Promise<StreamJobsResult> {

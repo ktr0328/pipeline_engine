@@ -45,6 +45,21 @@ for await (const evt of events) {
 }
 ```
 
+### グローバル設定（Provider Profile）の更新
+
+```ts
+await client.upsertProviderProfile({
+  id: "openai-cli",
+  kind: "openai",
+  api_key: process.env.OPENAI_API_KEY,
+  base_uri: "https://api.openai.com/v1",
+  default_model: "gpt-4o-mini"
+});
+
+await client.updateEngineConfig({ log_level: "debug" });
+```
+```
+
 `client.streamJobs()` は `AsyncIterable<StreamingEvent>` を返すので、Electron では chunk が到着するたびに UI を更新できます。
 
 ## ビルド

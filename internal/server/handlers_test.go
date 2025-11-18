@@ -214,6 +214,37 @@ func TestHandlerGetJobNotFound(t *testing.T) {
 	}
 }
 
+func TestHandlerUpsertProviderProfile(t *testing.T) {
+	t.Parallel()
+	var received engine.ProviderProfile
+	stub := &stubEngine{
+		upsertProfileFunc: func(p engine.ProviderProfile) error {
+			received = p
+			return nil
+		},
+	}
+	mux := newTestMux(stub)
+	req := httptest.NewRequest(http.MethodPost, "/v1/config/providers", strings.NewReader(`{"id":"ts-sdk","kind":"openai","base_uri":"http://mock","api_key":"sk","default_model":"gpt"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+	assertStatus(t, resp.Code, http.StatusOK)
+	if received.ID != "ts-sdk" || received.Kind != engine.ProviderOpenAI {
+		t.Fatalf("profile not passed to engine: %+v", received)
+	}
+}
+
+func TestHandlerUpdateEngineConfig(t *testing.T) {
+	stor := store.NewMemoryStore()
+	eng := engine.NewBasicEngine(stor)
+	mux := newTestMux(eng)
+	req := httptest.NewRequest(http.MethodPost, "/v1/config/engine", strings.NewReader(`{"log_level":"debug"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+	assertStatus(t, resp.Code, http.StatusOK)
+}
+
 func TestHandlerRerunJob(t *testing.T) {
 	t.Parallel()
 
@@ -328,10 +359,11 @@ func TestHandlerUnknownActionReturnsNotFound(t *testing.T) {
 }
 
 type stubEngine struct {
-	runJobFunc       func(ctx context.Context, req engine.JobRequest) (*engine.Job, error)
-	runJobStreamFunc func(ctx context.Context, req engine.JobRequest) (<-chan engine.StreamingEvent, *engine.Job, error)
-	cancelJobFunc    func(ctx context.Context, jobID string, reason string) error
-	getJobFunc       func(ctx context.Context, jobID string) (*engine.Job, error)
+	runJobFunc        func(ctx context.Context, req engine.JobRequest) (*engine.Job, error)
+	runJobStreamFunc  func(ctx context.Context, req engine.JobRequest) (<-chan engine.StreamingEvent, *engine.Job, error)
+	cancelJobFunc     func(ctx context.Context, jobID string, reason string) error
+	getJobFunc        func(ctx context.Context, jobID string) (*engine.Job, error)
+	upsertProfileFunc func(engine.ProviderProfile) error
 }
 
 func (s *stubEngine) RunJob(ctx context.Context, req engine.JobRequest) (*engine.Job, error) {
@@ -360,6 +392,13 @@ func (s *stubEngine) GetJob(ctx context.Context, jobID string) (*engine.Job, err
 		return nil, errors.New("getJob not implemented")
 	}
 	return s.getJobFunc(ctx, jobID)
+}
+
+func (s *stubEngine) UpsertProviderProfile(profile engine.ProviderProfile) error {
+	if s.upsertProfileFunc == nil {
+		return errors.New("upsert not implemented")
+	}
+	return s.upsertProfileFunc(profile)
 }
 
 func minimalJob(id string) *engine.Job {

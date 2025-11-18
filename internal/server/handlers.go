@@ -11,6 +11,7 @@ import (
 
 	"github.com/example/pipeline-engine/internal/engine"
 	"github.com/example/pipeline-engine/internal/store"
+	"github.com/example/pipeline-engine/pkg/logging"
 )
 
 // Handler wires HTTP requests to the engine implementation.
@@ -40,6 +41,19 @@ type apiErrorResponse struct {
 	Error apiErrorPayload `json:"error"`
 }
 
+type providerProfileRequest struct {
+	ID           engine.ProviderProfileID `json:"id"`
+	Kind         engine.ProviderKind      `json:"kind"`
+	BaseURI      string                   `json:"base_uri"`
+	APIKey       string                   `json:"api_key"`
+	DefaultModel string                   `json:"default_model"`
+	Extra        map[string]any           `json:"extra"`
+}
+
+type engineConfigRequest struct {
+	LogLevel string `json:"log_level"`
+}
+
 // NewHandler creates a Handler.
 func NewHandler(e engine.Engine, startedAt time.Time, version string) *Handler {
 	if startedAt.IsZero() {
@@ -56,6 +70,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/health", h.handleHealth)
 	mux.HandleFunc("/v1/jobs", h.handleJobs)
 	mux.HandleFunc("/v1/jobs/", h.handleJobOps)
+	mux.HandleFunc("/v1/config/providers", h.handleProviderConfig)
+	mux.HandleFunc("/v1/config/engine", h.handleEngineConfig)
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +134,59 @@ func (h *Handler) handleJobOps(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeNotFound(w)
 	}
+}
+
+func (h *Handler) handleProviderConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	defer r.Body.Close()
+	var payload providerProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("invalid payload: %v", err), nil)
+		return
+	}
+	if payload.ID == "" {
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "id is required", nil)
+		return
+	}
+	profile := engine.ProviderProfile{
+		ID:           payload.ID,
+		Kind:         payload.Kind,
+		BaseURI:      payload.BaseURI,
+		APIKey:       payload.APIKey,
+		DefaultModel: payload.DefaultModel,
+		Extra:        payload.Extra,
+	}
+	if err := h.engine.UpsertProviderProfile(profile); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "config_error", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, profile)
+}
+
+func (h *Handler) handleEngineConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	defer r.Body.Close()
+	var payload engineConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("invalid payload: %v", err), nil)
+		return
+	}
+	resp := map[string]any{}
+	if payload.LogLevel != "" {
+		level := logging.SetLevelFromString(payload.LogLevel)
+		resp["log_level"] = level.String()
+	}
+	if len(resp) == 0 {
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "no configuration provided", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) createJob(w http.ResponseWriter, r *http.Request) {

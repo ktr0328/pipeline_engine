@@ -9,7 +9,7 @@ import (
 )
 
 type fakeEngine struct {
-	regs []engine.PipelineDef
+    regs []engine.PipelineDef
 }
 
 func (f *fakeEngine) RunJob(ctx context.Context, req engine.JobRequest) (*engine.Job, error) {
@@ -29,7 +29,11 @@ func (f *fakeEngine) GetJob(ctx context.Context, jobID string) (*engine.Job, err
 }
 
 func (f *fakeEngine) RegisterPipeline(def engine.PipelineDef) {
-	f.regs = append(f.regs, def)
+    f.regs = append(f.regs, def)
+}
+
+func (f *fakeEngine) UpsertProviderProfile(profile engine.ProviderProfile) error {
+    return nil
 }
 
 func TestBuildOpenAIProfileFromEnv(t *testing.T) {

@@ -480,6 +480,8 @@ curl -s \
 | `GET` | `/v1/jobs/{id}/stream` | 既存ジョブのステータス変化をストリームで受信 |
 | `POST` | `/v1/jobs/{id}/cancel` | 実行中ジョブのキャンセル |
 | `POST` | `/v1/jobs/{id}/rerun` | 同じ入力を使ったリラン、または途中ステップからの再実行 |
+| `POST` | `/v1/config/providers` | ProviderProfile の upsert（API キー差し替え等） |
+| `POST` | `/v1/config/engine` | エンジン設定（例: ログレベル）を更新 |
 
 ## ドメインモデルの抜粋
 - **Provider / ProviderProfile**: OpenAI や Ollama、画像生成などの外部実行体を `ProviderKind` として抽象化。Step ごとに `ProviderOverride` を与えることでモデルやエンドポイントを上書きできます。
@@ -504,6 +506,8 @@ curl -s \
 
 ## TypeScript SDK
 `pkg/sdk/typescript` に Node.js / Electron 向けのクライアント SDK を同梱しています。`PipelineEngineClient` を利用すると、`streamJobs()` で NDJSON を `AsyncIterable` として処理でき、`provider_chunk` を容易に扱えます。
+
+- `upsertProviderProfile()` で OpenAI/Ollama の API キーやベース URL を実行時に差し替え可能です。
 
 ```
 npm install ./pkg/sdk/typescript

@@ -30,6 +30,7 @@ type Engine interface {
 	RunJobStream(ctx context.Context, req JobRequest) (<-chan StreamingEvent, *Job, error)
 	CancelJob(ctx context.Context, jobID string, reason string) error
 	GetJob(ctx context.Context, jobID string) (*Job, error)
+	UpsertProviderProfile(profile ProviderProfile) error
 }
 
 // JobStore is the minimal persistence contract required by the engine.
@@ -401,6 +402,15 @@ func (e *BasicEngine) removeJobPipeline(jobID string) {
 	e.jobPipeMu.Lock()
 	defer e.jobPipeMu.Unlock()
 	delete(e.jobPipeline, jobID)
+}
+
+func (e *BasicEngine) UpsertProviderProfile(profile ProviderProfile) error {
+	if e.providers == nil {
+		e.providers = NewProviderRegistry()
+		RegisterDefaultProviderFactories(e.providers)
+	}
+	e.providers.RegisterProfile(profile)
+	return nil
 }
 
 func (e *BasicEngine) saveCheckpoint(jobID string, stepID StepID, items []ResultItem) {
