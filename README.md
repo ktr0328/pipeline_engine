@@ -373,7 +373,7 @@ curl -N -H "Content-Type: application/json" \
   "http://127.0.0.1:8085/v1/jobs?stream=true"
 ```
 
-代表的なレスポンス（抜粋）:
+代表的なレスポンス（抜粋、および [StreamingEvents](docs/api/StreamingEvents.md) 参照）:
 
 ```jsonc
 {"event":"step_started","data":{"step_id":"trivia"}}
@@ -471,6 +471,13 @@ curl -s \
 - Provider SDK（TypeScript / Python / Go）とアプリケーション層（常駐サジェスタ、フローベース UI など）。
 - Unix ドメインソケット対応や永続ストアのプラガブル化。
 - 途中ステップからの厳密なリラン、ストリーム再開などの運用機能強化。
+
+## メトリクス / ログ
+- `PIPELINE_ENGINE_LOG_LEVEL` で `debug`/`info`/`warn`/`error` のログレベルを指定できます（既定 `info`）。
+- Go の `expvar` を利用してメトリクスを `/debug/vars` で公開しています。主なキー:
+  - `provider_call_count` / `provider_call_latency_ms` / `provider_call_errors`: Provider 呼び出し回数・総レイテンシ・エラー数（kind 別）
+  - `provider_chunk_count`: Provider chunk 送出数
+- chunk イベントは `provider_chunk` としてストリーミング中に届くので、UI 側はこれを逐次描画し、`stream_finished` 受信時にストリームを閉じてください。
 
 ## ライセンス
 本リポジトリは [Apache License 2.0](LICENSE) の下で提供されています。

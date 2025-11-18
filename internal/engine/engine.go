@@ -10,6 +10,8 @@ import (
 	"sync"
 	"text/template"
 	"time"
+
+	"github.com/example/pipeline-engine/pkg/metrics"
 )
 
 // JobRequest represents the minimal payload required to start a job.
@@ -595,9 +597,9 @@ func (e *BasicEngine) runStep(ctx context.Context, job *Job, execIdx int, step S
 			}
 		}
 		if len(base) == 0 {
-		return e.runFanOutStep(ctx, execIdx, provider, profile, step, job, prompt, inputCtx)
-	}
-	return e.runPerItemStep(ctx, execIdx, provider, profile, step, job, prompt, inputCtx, base)
+			return e.runFanOutStep(ctx, execIdx, provider, profile, step, job, prompt, inputCtx)
+		}
+		return e.runPerItemStep(ctx, execIdx, provider, profile, step, job, prompt, inputCtx, base)
 	default:
 		return e.runSingleStep(ctx, execIdx, provider, profile, step, job, prompt, inputCtx)
 	}
@@ -608,7 +610,7 @@ func (e *BasicEngine) runSingleStep(ctx context.Context, execIdx int, provider P
 	if err != nil {
 		return nil, err
 	}
-	e.recordChunks(job, execIdx, resp.Chunks)
+	e.recordChunks(job, execIdx, profile.Kind, resp.Chunks)
 	text := resp.Output
 	meta := resp.Metadata
 	if text == "" {
@@ -630,7 +632,7 @@ func (e *BasicEngine) runFanOutStep(ctx context.Context, execIdx int, provider P
 		if err != nil {
 			return nil, err
 		}
-		e.recordChunks(job, execIdx, resp.Chunks)
+		e.recordChunks(job, execIdx, profile.Kind, resp.Chunks)
 		text := resp.Output
 		meta := resp.Metadata
 		if text == "" {
@@ -652,7 +654,7 @@ func (e *BasicEngine) runPerItemStep(ctx context.Context, execIdx int, provider 
 		if err != nil {
 			return nil, err
 		}
-		e.recordChunks(job, execIdx, resp.Chunks)
+		e.recordChunks(job, execIdx, profile.Kind, resp.Chunks)
 		text := resp.Output
 		meta := resp.Metadata
 		if text == "" {
@@ -740,15 +742,18 @@ func (e *BasicEngine) callProvider(ctx context.Context, provider Provider, profi
 	if provider == nil {
 		return ProviderResponse{}, nil
 	}
-	return provider.Call(ctx, ProviderRequest{
+	start := time.Now()
+	resp, err := provider.Call(ctx, ProviderRequest{
 		Step:    step,
 		Prompt:  prompt,
 		Profile: profile,
 		Input:   input,
 	})
+	metrics.ObserveProviderCall(string(profile.Kind), time.Since(start), err)
+	return resp, err
 }
 
-func (e *BasicEngine) recordChunks(job *Job, execIdx int, chunks []ProviderChunk) {
+func (e *BasicEngine) recordChunks(job *Job, execIdx int, kind ProviderKind, chunks []ProviderChunk) {
 	if len(chunks) == 0 || execIdx < 0 || execIdx >= len(job.StepExecutions) {
 		return
 	}
@@ -757,6 +762,7 @@ func (e *BasicEngine) recordChunks(job *Job, execIdx int, chunks []ProviderChunk
 		index := len(stepExec.Chunks)
 		stepExec.Chunks = append(stepExec.Chunks, StepChunk{StepID: stepExec.StepID, Index: index, Content: chunk.Content})
 	}
+	metrics.ObserveProviderChunks(string(kind), len(chunks))
 	job.UpdatedAt = time.Now().UTC()
 	_ = e.store.UpdateJob(job)
 }

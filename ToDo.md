@@ -32,6 +32,7 @@
 - [x] `/v1/jobs/{id}/rerun` の `override_input` を反映し、`parent_job_id` を設定した新規 Job を返す。
 - [x] API エラー形式 `{ error: { code, message, details } }` を全エンドポイントで統一。
 - [x] ストリーム終端を明示する `stream_finished` イベントを追加し、README / 詳細設計書に記載。
+- [x] Provider chunk (`provider_chunk`) をストリーミングに含め、StepExecution とドキュメントへ反映。
 
 ### SDK / クライアント
 - [x] `pkg/sdk/go/client.go` に HTTP クライアント（CreateJob / GetJob / Stream / Cancel / Rerun）を実装。
@@ -60,3 +61,4 @@
 - [x] README に Provider 設定例と DAG 例、ストリームイベント仕様を追記。
 - [x] `docs/詳細設計書.md` を最新実装へ随時更新（特に §5 HTTP API と §6 Engine 挙動）。
 - [x] ImplementationPlan をアップデートし、完了タスクと次フェーズを明示。
+- [x] `expvar` ベースの Provider メトリクス（call count/latency/errors/chunk）とログレベル制御を導入。
