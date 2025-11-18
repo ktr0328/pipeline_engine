@@ -10,7 +10,8 @@
 - ✅ DAG 実行・PromptTemplate 適用・ProviderRegistry（OpenAI / Ollama / Image / LocalTool のスタブ）をエンジンに実装済み。
 - ✅ StreamingEvent の粒度拡張（`job_started`/`step_completed`/`item_completed` など）と `/health` の version / uptime 返却を実装。
 - ✅ Go SDK (`pkg/sdk/go`) で Create/Get/Cancel/Rerun/Stream API をサポート。単体テストを追加済み。
-- 🔄 次フェーズ: MemoryStore での StepCheckpoint 永続化、TypeScript/Python SDK の設計メモ、Provider 実 API 呼び出し実装。
+- ✅ MemoryStore での StepCheckpoint 永続化、および TypeScript/Python SDK 設計メモの追加を完了。
+- 🔄 次フェーズ: Provider 実 API 呼び出し実装（OpenAI / Ollama との連携強化）と追加 SDK 実装。
 
 ## 0. ディレクトリ構成（最初のゴール）
 - `cmd/pipeline-engine/main.go`

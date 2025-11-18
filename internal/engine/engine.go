@@ -46,6 +46,7 @@ type EngineConfig struct {
 // BasicEngine is a naive single-node engine implementation intended for the v0 milestone.
 type BasicEngine struct {
 	store        JobStore
+	checkpoint   StepCheckpointStore
 	cancels      map[string]context.CancelFunc
 	mu           sync.Mutex
 	pipelineMu   sync.RWMutex
@@ -77,6 +78,7 @@ func NewBasicEngineWithConfig(store JobStore, cfg *EngineConfig) *BasicEngine {
 
 	return &BasicEngine{
 		store:       store,
+		checkpoint:  detectCheckpointStore(store),
 		cancels:     map[string]context.CancelFunc{},
 		pipelines:   map[PipelineType]*PipelineDef{},
 		jobPipeline: map[string]*PipelineDef{},
@@ -400,6 +402,10 @@ func (e *BasicEngine) removeJobPipeline(jobID string) {
 }
 
 func (e *BasicEngine) saveCheckpoint(jobID string, stepID StepID, items []ResultItem) {
+	if e.checkpoint != nil {
+		e.checkpoint.SaveCheckpoint(jobID, stepID, items)
+		return
+	}
 	if len(items) == 0 {
 		return
 	}
@@ -414,6 +420,9 @@ func (e *BasicEngine) saveCheckpoint(jobID string, stepID StepID, items []Result
 }
 
 func (e *BasicEngine) loadCheckpoints(jobID string) map[StepID][]ResultItem {
+	if e.checkpoint != nil {
+		return e.checkpoint.LoadCheckpoints(jobID)
+	}
 	e.checkpointMu.RLock()
 	defer e.checkpointMu.RUnlock()
 	source, ok := e.checkpoints[jobID]

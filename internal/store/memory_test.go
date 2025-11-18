@@ -112,6 +112,36 @@ func TestMemoryStore_ListJobsReturnsCopies(t *testing.T) {
 	}
 }
 
+func TestMemoryStore_Checkpoints(t *testing.T) {
+	t.Parallel()
+
+	memoryStore := store.NewMemoryStore()
+	items := []engine.ResultItem{
+		{ID: "item-1", Label: "summary", StepID: engine.StepID("step-1"), Kind: "text", ContentType: engine.ContentText, Data: map[string]any{"text": "dummy"}},
+	}
+
+	memoryStore.SaveCheckpoint("job-1", engine.StepID("step-1"), items)
+	loaded := memoryStore.LoadCheckpoints("job-1")
+	if len(loaded) != 1 {
+		mem := loaded
+		t.Fatalf("checkpoint が保存されていません: %+v", mem)
+	}
+	if _, ok := loaded[engine.StepID("step-1")]; !ok {
+		t.Fatalf("step-1 checkpoint が見つかりません: %+v", loaded)
+	}
+
+	// ensure deep copy
+	items[0].Label = "mutated"
+	if loaded[engine.StepID("step-1")][0].Label == "mutated" {
+		t.Fatalf("checkpoint がディープコピーされていません")
+	}
+
+	memoryStore.ClearCheckpoints("job-1")
+	if cp := memoryStore.LoadCheckpoints("job-1"); cp != nil {
+		t.Fatalf("ClearCheckpoints 後もデータが残っています: %+v", cp)
+	}
+}
+
 func newTestJob(id string) *engine.Job {
 	now := time.Now().UTC()
 	return &engine.Job{
