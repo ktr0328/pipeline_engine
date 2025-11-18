@@ -32,7 +32,7 @@ func TestBasicEngine_RunJobWithSamplePipeline(t *testing.T) {
 	}
 
 	item := finalJob.Result.Items[0]
-	if item.Kind != "text" {
+	if item.Kind != string(engine.StepKindLLM) {
 		t.Fatalf("結果アイテムの Kind が想定外です: %s", item.Kind)
 	}
 	if item.ContentType != engine.ContentText {
@@ -141,6 +141,131 @@ collectLoop:
 	}
 }
 
+func TestBasicEngine_RunJobWithRegisteredPipeline(t *testing.T) {
+	t.Parallel()
+
+	memoryStore := store.NewMemoryStore()
+	eng := engine.NewBasicEngine(memoryStore)
+	pipeline := engine.PipelineDef{
+		Type:    "multi_step_pipeline",
+		Version: "v1",
+		Steps: []engine.StepDef{
+			{
+				ID:         engine.StepID("ingest"),
+				Name:       "Ingest Logs",
+				Kind:       engine.StepKindMap,
+				Mode:       engine.StepModeFanOut,
+				OutputType: engine.ContentText,
+				Export:     true,
+			},
+			{
+				ID:         engine.StepID("summarize"),
+				Name:       "Summarize",
+				Kind:       engine.StepKindLLM,
+				Mode:       engine.StepModeSingle,
+				OutputType: engine.ContentMarkdown,
+				DependsOn:  []engine.StepID{engine.StepID("ingest")},
+				Export:     true,
+			},
+		},
+	}
+	eng.RegisterPipeline(pipeline)
+
+	req := sampleJobRequest()
+	req.PipelineType = pipeline.Type
+
+	job, err := eng.RunJob(context.Background(), req)
+	if err != nil {
+		t.Fatalf("multi step ジョブの起動に失敗しました: %v", err)
+	}
+
+	finalJob := waitForJobStatus(t, memoryStore, job.ID, engine.JobStatusSucceeded, 5*time.Second)
+	if len(finalJob.StepExecutions) != len(pipeline.Steps) {
+		t.Fatalf("StepExecutions の数が一致しません: %+v", finalJob.StepExecutions)
+	}
+
+	for i, exec := range finalJob.StepExecutions {
+		if exec.Status != engine.StepExecSuccess {
+			t.Fatalf("ステップ %d が success ではありません: %s", i, exec.Status)
+		}
+		if exec.StartedAt == nil || exec.FinishedAt == nil {
+			t.Fatalf("ステップ %d の開始/終了時刻が設定されていません: %+v", i, exec)
+		}
+	}
+
+	if finalJob.Result == nil || len(finalJob.Result.Items) < 2 {
+		t.Fatalf("multi step ジョブの結果が不足しています: %+v", finalJob.Result)
+	}
+}
+
+func TestBasicEngine_RerunReuseUpstream(t *testing.T) {
+	t.Parallel()
+
+	memoryStore := store.NewMemoryStore()
+	eng := engine.NewBasicEngine(memoryStore)
+	pipeline := engine.PipelineDef{
+		Type:    "rerun_pipeline",
+		Version: "v1",
+		Steps: []engine.StepDef{
+			{
+				ID:         engine.StepID("collect"),
+				Name:       "Collect",
+				Kind:       engine.StepKindMap,
+				Mode:       engine.StepModeFanOut,
+				OutputType: engine.ContentText,
+				Export:     true,
+			},
+			{
+				ID:         engine.StepID("finalize"),
+				Name:       "Finalize",
+				Kind:       engine.StepKindLLM,
+				Mode:       engine.StepModeSingle,
+				OutputType: engine.ContentMarkdown,
+				DependsOn:  []engine.StepID{engine.StepID("collect")},
+				Export:     true,
+			},
+		},
+	}
+	eng.RegisterPipeline(pipeline)
+
+	baseReq := sampleJobRequest()
+	baseReq.PipelineType = pipeline.Type
+
+	baseJob, err := eng.RunJob(context.Background(), baseReq)
+	if err != nil {
+		t.Fatalf("ベースジョブの起動に失敗しました: %v", err)
+	}
+	waitForJobStatus(t, memoryStore, baseJob.ID, engine.JobStatusSucceeded, 5*time.Second)
+
+	parentID := baseJob.ID
+	fromStep := engine.StepID("finalize")
+	rerunReq := sampleJobRequest()
+	rerunReq.PipelineType = pipeline.Type
+	rerunReq.ParentJobID = &parentID
+	rerunReq.FromStepID = &fromStep
+	rerunReq.ReuseUpstream = true
+	rerunReq.Mode = "sync"
+
+	rerunJob, err := eng.RunJob(context.Background(), rerunReq)
+	if err != nil {
+		t.Fatalf("rerun ジョブの起動に失敗しました: %v", err)
+	}
+	if rerunJob.Status != engine.JobStatusSucceeded {
+		t.Fatalf("rerun ジョブが success ではありません: %s", rerunJob.Status)
+	}
+	if len(rerunJob.StepExecutions) != len(pipeline.Steps) {
+		t.Fatalf("StepExecutions の数が一致しません: %+v", rerunJob.StepExecutions)
+	}
+	if rerunJob.StepExecutions[0].Status != engine.StepExecSkipped {
+		t.Fatalf("上流ステップが skipped になっていません: %+v", rerunJob.StepExecutions[0])
+	}
+	if rerunJob.StepExecutions[1].Status != engine.StepExecSuccess {
+		t.Fatalf("再実行ステップが success ではありません: %+v", rerunJob.StepExecutions[1])
+	}
+	if rerunJob.Result == nil || len(rerunJob.Result.Items) == 0 {
+		t.Fatalf("rerun ジョブの結果が空です: %+v", rerunJob.Result)
+	}
+}
 func waitForJobStatus(t *testing.T, jobStore engine.JobStore, jobID string, expected engine.JobStatus, timeout time.Duration) *engine.Job {
 	t.Helper()
 

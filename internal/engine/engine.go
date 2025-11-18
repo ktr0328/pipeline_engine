@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
+	"text/template"
 	"time"
 )
 
@@ -38,17 +40,36 @@ type JobStore interface {
 
 // BasicEngine is a naive single-node engine implementation intended for the v0 milestone.
 type BasicEngine struct {
-	store   JobStore
-	cancels map[string]context.CancelFunc
-	mu      sync.Mutex
+	store        JobStore
+	cancels      map[string]context.CancelFunc
+	mu           sync.Mutex
+	pipelineMu   sync.RWMutex
+	pipelines    map[PipelineType]*PipelineDef
+	jobPipeline  map[string]*PipelineDef
+	jobPipeMu    sync.RWMutex
+	checkpointMu sync.RWMutex
+	checkpoints  map[string]map[StepID][]ResultItem
 }
 
 // NewBasicEngine returns an Engine implementation backed by the provided store.
 func NewBasicEngine(store JobStore) *BasicEngine {
 	return &BasicEngine{
-		store:   store,
-		cancels: map[string]context.CancelFunc{},
+		store:       store,
+		cancels:     map[string]context.CancelFunc{},
+		pipelines:   map[PipelineType]*PipelineDef{},
+		jobPipeline: map[string]*PipelineDef{},
+		checkpoints: map[string]map[StepID][]ResultItem{},
 	}
+}
+
+// RegisterPipeline registers or replaces a pipeline definition.
+func (e *BasicEngine) RegisterPipeline(def PipelineDef) {
+	if def.Type == "" {
+		return
+	}
+	e.pipelineMu.Lock()
+	defer e.pipelineMu.Unlock()
+	e.pipelines[def.Type] = clonePipeline(&def)
 }
 
 // RunJob creates a new job and schedules it for asynchronous execution.
@@ -62,15 +83,26 @@ func (e *BasicEngine) RunJob(ctx context.Context, req JobRequest) (*Job, error) 
 		mode = "async"
 	}
 
-	now := time.Now().UTC()
-	initialStepID := StepID("step-1")
-	if req.FromStepID != nil && *req.FromStepID != "" {
-		initialStepID = *req.FromStepID
+	pipeline := e.pipelineForType(req.PipelineType)
+	if req.FromStepID != nil {
+		if idx := findStepIndex(pipeline.Steps, *req.FromStepID); idx == -1 {
+			return nil, fmt.Errorf("step %s not found in pipeline", *req.FromStepID)
+		}
 	}
+
+	stepExecs := make([]StepExecution, len(pipeline.Steps))
+	for i, step := range pipeline.Steps {
+		stepExecs[i] = StepExecution{StepID: step.ID, Status: StepExecPending}
+	}
+	if len(stepExecs) == 0 {
+		stepExecs = []StepExecution{{StepID: StepID("step-1"), Status: StepExecPending}}
+	}
+
+	now := time.Now().UTC()
 	job := &Job{
 		ID:              generateID(),
 		PipelineType:    req.PipelineType,
-		PipelineVersion: "v0",
+		PipelineVersion: pipeline.Version,
 		Status:          JobStatusQueued,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -79,19 +111,33 @@ func (e *BasicEngine) RunJob(ctx context.Context, req JobRequest) (*Job, error) 
 		ParentJobID:     req.ParentJobID,
 		RerunFromStep:   req.FromStepID,
 		ReuseUpstream:   req.ReuseUpstream,
-		StepExecutions: []StepExecution{
-			{StepID: initialStepID, Status: StepExecPending},
-		},
+		StepExecutions:  stepExecs,
 	}
 
+	e.cacheJobPipeline(job.ID, pipeline)
+
 	if err := e.store.CreateJob(job); err != nil {
+		e.removeJobPipeline(job.ID)
 		return nil, err
 	}
 
 	jobCtx, cancel := context.WithCancel(context.Background())
 	e.setCancel(job.ID, cancel)
 
-	go e.executeJob(jobCtx, job.ID)
+	if mode == "sync" {
+		e.executeJob(jobCtx, job.ID)
+		cancel()
+		finalJob, err := e.store.GetJob(job.ID)
+		if err != nil {
+			return nil, err
+		}
+		return finalJob, nil
+	}
+
+	go func() {
+		defer cancel()
+		e.executeJob(jobCtx, job.ID)
+	}()
 
 	return job, nil
 }
@@ -154,60 +200,105 @@ func (e *BasicEngine) GetJob(ctx context.Context, jobID string) (*Job, error) {
 }
 
 func (e *BasicEngine) executeJob(ctx context.Context, jobID string) {
+	defer e.clearCancel(jobID)
+	defer e.removeJobPipeline(jobID)
+
 	job, err := e.store.GetJob(jobID)
 	if err != nil {
 		return
 	}
 
+	pipeline := e.loadJobPipeline(jobID)
+	if pipeline == nil {
+		pipeline = e.pipelineForType(job.PipelineType)
+	}
+	if len(pipeline.Steps) == 0 {
+		pipeline.Steps = []StepDef{
+			{ID: StepID("step-1"), Kind: StepKindLLM, Mode: StepModeSingle, OutputType: ContentText, Export: true},
+		}
+	}
+
+	if len(job.StepExecutions) != len(pipeline.Steps) {
+		job.StepExecutions = make([]StepExecution, len(pipeline.Steps))
+		for i, step := range pipeline.Steps {
+			job.StepExecutions[i] = StepExecution{StepID: step.ID, Status: StepExecPending}
+		}
+	}
+
+	stepOutputs := make(map[StepID][]ResultItem)
+	startIndex := findStartIndex(pipeline, job.RerunFromStep)
+	if job.ReuseUpstream && job.ParentJobID != nil {
+		if reused := e.loadCheckpoints(*job.ParentJobID); len(reused) > 0 {
+			for idx := 0; idx < startIndex && idx < len(pipeline.Steps); idx++ {
+				step := pipeline.Steps[idx]
+				if items, ok := reused[step.ID]; ok {
+					stepOutputs[step.ID] = cloneResultItems(items)
+					job.StepExecutions[idx].Status = StepExecSkipped
+					if step.Export {
+						appendExportedResults(job, items)
+					}
+				}
+			}
+		}
+	}
+
 	now := time.Now().UTC()
 	job.Status = JobStatusRunning
 	job.UpdatedAt = now
-	if len(job.StepExecutions) > 0 {
-		job.StepExecutions[0].Status = StepExecRunning
-		job.StepExecutions[0].StartedAt = ptrTime(now)
-	}
-
 	if err := e.store.UpdateJob(job); err != nil {
 		return
 	}
 
-	workDone := make(chan struct{})
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		close(workDone)
-	}()
+	for idx, step := range pipeline.Steps {
+		if job.ReuseUpstream && idx < startIndex {
+			continue
+		}
 
-	select {
-	case <-ctx.Done():
-		return
-	case <-workDone:
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if err := ensureDependencies(step, stepOutputs); err != nil {
+			e.failStep(job, idx, "missing_dependency", err.Error())
+			return
+		}
+
+		start := time.Now().UTC()
+		job.StepExecutions[idx].Status = StepExecRunning
+		job.StepExecutions[idx].StartedAt = ptrTime(start)
+		if err := e.store.UpdateJob(job); err != nil {
+			return
+		}
+
+		prompt := buildPrompt(step, job, stepOutputs)
+		items, execErr := e.runStep(ctx, job, step, prompt, stepOutputs)
+		if execErr != nil {
+			code := "step_failed"
+			if errors.Is(execErr, context.Canceled) {
+				code = "cancelled"
+			}
+			e.failStep(job, idx, code, execErr.Error())
+			return
+		}
+
+		finish := time.Now().UTC()
+		job.StepExecutions[idx].Status = StepExecSuccess
+		job.StepExecutions[idx].FinishedAt = ptrTime(finish)
+		job.StepExecutions[idx].Error = nil
+		job.UpdatedAt = finish
+		stepOutputs[step.ID] = items
+		e.saveCheckpoint(job.ID, step.ID, items)
+		appendExportedResultsForStep(job, step, items)
+		if err := e.store.UpdateJob(job); err != nil {
+			return
+		}
 	}
 
-	finish := time.Now().UTC()
 	job.Status = JobStatusSucceeded
-	job.UpdatedAt = finish
-	dummyText := "dummy response from engine"
-	job.Result = &JobResult{
-		Items: []ResultItem{
-			{
-				ID:          generateID(),
-				Label:       "summary",
-				StepID:      job.StepExecutions[0].StepID,
-				Kind:        "text",
-				ContentType: ContentText,
-				Data: map[string]any{
-					"text": dummyText,
-				},
-			},
-		},
-	}
-	if len(job.StepExecutions) > 0 {
-		job.StepExecutions[0].Status = StepExecSuccess
-		job.StepExecutions[0].FinishedAt = ptrTime(finish)
-	}
-
+	job.UpdatedAt = time.Now().UTC()
 	_ = e.store.UpdateJob(job)
-	e.clearCancel(jobID)
 }
 
 func (e *BasicEngine) streamJob(ctx context.Context, ch chan<- StreamingEvent, jobID string) {
@@ -256,6 +347,361 @@ func (e *BasicEngine) clearCancel(jobID string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	delete(e.cancels, jobID)
+}
+
+func (e *BasicEngine) cacheJobPipeline(jobID string, def *PipelineDef) {
+	if def == nil {
+		return
+	}
+	e.jobPipeMu.Lock()
+	defer e.jobPipeMu.Unlock()
+	e.jobPipeline[jobID] = clonePipeline(def)
+}
+
+func (e *BasicEngine) loadJobPipeline(jobID string) *PipelineDef {
+	e.jobPipeMu.RLock()
+	defer e.jobPipeMu.RUnlock()
+	if def, ok := e.jobPipeline[jobID]; ok {
+		return clonePipeline(def)
+	}
+	return nil
+}
+
+func (e *BasicEngine) removeJobPipeline(jobID string) {
+	e.jobPipeMu.Lock()
+	defer e.jobPipeMu.Unlock()
+	delete(e.jobPipeline, jobID)
+}
+
+func (e *BasicEngine) saveCheckpoint(jobID string, stepID StepID, items []ResultItem) {
+	if len(items) == 0 {
+		return
+	}
+	e.checkpointMu.Lock()
+	defer e.checkpointMu.Unlock()
+	stepMap, ok := e.checkpoints[jobID]
+	if !ok {
+		stepMap = map[StepID][]ResultItem{}
+		e.checkpoints[jobID] = stepMap
+	}
+	stepMap[stepID] = cloneResultItems(items)
+}
+
+func (e *BasicEngine) loadCheckpoints(jobID string) map[StepID][]ResultItem {
+	e.checkpointMu.RLock()
+	defer e.checkpointMu.RUnlock()
+	source, ok := e.checkpoints[jobID]
+	if !ok {
+		return nil
+	}
+	result := make(map[StepID][]ResultItem, len(source))
+	for stepID, items := range source {
+		result[stepID] = cloneResultItems(items)
+	}
+	return result
+}
+
+func (e *BasicEngine) pipelineForType(pt PipelineType) *PipelineDef {
+	e.pipelineMu.RLock()
+	def, ok := e.pipelines[pt]
+	e.pipelineMu.RUnlock()
+	if ok {
+		return clonePipeline(def)
+	}
+	return defaultPipeline(pt)
+}
+
+func clonePipeline(def *PipelineDef) *PipelineDef {
+	if def == nil {
+		return defaultPipeline("")
+	}
+	copyDef := &PipelineDef{
+		Type:    def.Type,
+		Version: def.Version,
+		Steps:   make([]StepDef, len(def.Steps)),
+	}
+	if copyDef.Version == "" {
+		copyDef.Version = "v0"
+	}
+	if len(def.Steps) == 0 {
+		copyDef.Steps = []StepDef{
+			{ID: StepID("step-1"), Name: "default", Kind: StepKindLLM, Mode: StepModeSingle, OutputType: ContentText, Export: true},
+		}
+		return copyDef
+	}
+	for i, step := range def.Steps {
+		cp := step
+		if cp.ID == "" {
+			cp.ID = StepID(fmt.Sprintf("step-%d", i+1))
+		}
+		if cp.Kind == "" {
+			cp.Kind = StepKindLLM
+		}
+		if cp.Mode == "" {
+			cp.Mode = StepModeSingle
+		}
+		if cp.OutputType == "" {
+			cp.OutputType = ContentText
+		}
+		copyDef.Steps[i] = cp
+	}
+	return copyDef
+}
+
+func defaultPipeline(pt PipelineType) *PipelineDef {
+	return &PipelineDef{
+		Type:    pt,
+		Version: "v0",
+		Steps: []StepDef{
+			{ID: StepID("step-1"), Name: "default", Kind: StepKindLLM, Mode: StepModeSingle, OutputType: ContentText, Export: true},
+		},
+	}
+}
+
+func findStepIndex(steps []StepDef, id StepID) int {
+	for i, step := range steps {
+		if step.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func findStartIndex(pipeline *PipelineDef, from *StepID) int {
+	if pipeline == nil || from == nil {
+		return 0
+	}
+	if idx := findStepIndex(pipeline.Steps, *from); idx >= 0 {
+		return idx
+	}
+	return 0
+}
+
+func ensureDependencies(step StepDef, outputs map[StepID][]ResultItem) error {
+	for _, dep := range step.DependsOn {
+		if _, ok := outputs[dep]; !ok {
+			return fmt.Errorf("dependency %s not satisfied for step %s", dep, step.ID)
+		}
+	}
+	return nil
+}
+
+type promptContext struct {
+	Job      *Job
+	Step     StepDef
+	Sources  []Source
+	Options  *JobOptions
+	Previous map[string][]ResultItem
+}
+
+func buildPrompt(step StepDef, job *Job, outputs map[StepID][]ResultItem) string {
+	if step.Prompt == nil {
+		return ""
+	}
+	ctx := promptContext{
+		Job:      job,
+		Step:     step,
+		Sources:  job.Input.Sources,
+		Options:  job.Input.Options,
+		Previous: map[string][]ResultItem{},
+	}
+	for k, v := range outputs {
+		ctx.Previous[string(k)] = cloneResultItems(v)
+	}
+
+	var b strings.Builder
+	if step.Prompt.System != "" {
+		b.WriteString(executeTemplateText(step.Prompt.System, ctx))
+		b.WriteByte('\n')
+	}
+	if step.Prompt.User != "" {
+		b.WriteString(executeTemplateText(step.Prompt.User, ctx))
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func executeTemplateText(text string, data any) string {
+	tpl, err := template.New("prompt").Parse(text)
+	if err != nil {
+		return text
+	}
+	var b strings.Builder
+	if err := tpl.Execute(&b, data); err != nil {
+		return text
+	}
+	return b.String()
+}
+
+func (e *BasicEngine) runStep(ctx context.Context, job *Job, step StepDef, prompt string, outputs map[StepID][]ResultItem) ([]ResultItem, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	switch step.Mode {
+	case StepModeFanOut:
+		return buildFanOutResults(step, job, prompt), nil
+	case StepModePerItem:
+		var base []ResultItem
+		if len(step.DependsOn) > 0 {
+			if depItems, ok := outputs[step.DependsOn[len(step.DependsOn)-1]]; ok && len(depItems) > 0 {
+				base = depItems
+			}
+		}
+		if len(base) == 0 {
+			return buildFanOutResults(step, job, prompt), nil
+		}
+		return buildPerItemResults(step, base, prompt), nil
+	default:
+		return []ResultItem{buildSingleResult(step, job, prompt)}, nil
+	}
+}
+
+func buildSingleResult(step StepDef, job *Job, prompt string) ResultItem {
+	label := step.Name
+	if label == "" {
+		label = string(step.ID)
+	}
+	data := map[string]any{
+		"text":         fmt.Sprintf("step %s processed %d sources", step.ID, len(job.Input.Sources)),
+		"prompt":       prompt,
+		"pipelineType": job.PipelineType,
+	}
+	return ResultItem{
+		ID:          generateID(),
+		Label:       label,
+		StepID:      step.ID,
+		Kind:        string(step.Kind),
+		ContentType: ensureContentType(step.OutputType),
+		Data:        data,
+	}
+}
+
+func buildFanOutResults(step StepDef, job *Job, prompt string) []ResultItem {
+	if len(job.Input.Sources) == 0 {
+		return []ResultItem{buildSingleResult(step, job, prompt)}
+	}
+	items := make([]ResultItem, len(job.Input.Sources))
+	for i, src := range job.Input.Sources {
+		shard := fmt.Sprintf("%s-%d", step.ID, i)
+		data := map[string]any{
+			"text":        fmt.Sprintf("step %s handled source %s", step.ID, src.Label),
+			"prompt":      prompt,
+			"source_kind": src.Kind,
+			"source":      src.Content,
+		}
+		items[i] = ResultItem{
+			ID:          generateID(),
+			Label:       fmt.Sprintf("%s#%d", step.Name, i+1),
+			StepID:      step.ID,
+			ShardKey:    ptrString(shard),
+			Kind:        string(step.Kind),
+			ContentType: ensureContentType(step.OutputType),
+			Data:        data,
+		}
+	}
+	return items
+}
+
+func buildPerItemResults(step StepDef, base []ResultItem, prompt string) []ResultItem {
+	items := make([]ResultItem, len(base))
+	for i, prev := range base {
+		shard := fmt.Sprintf("%s-%d", step.ID, i)
+		if prev.ShardKey != nil {
+			shard = *prev.ShardKey
+		}
+		data := map[string]any{
+			"text":          fmt.Sprintf("step %s refined shard %s", step.ID, shard),
+			"prompt":        prompt,
+			"previous_step": prev.StepID,
+		}
+		items[i] = ResultItem{
+			ID:          generateID(),
+			Label:       fmt.Sprintf("%s#%d", step.Name, i+1),
+			StepID:      step.ID,
+			ShardKey:    ptrString(shard),
+			Kind:        string(step.Kind),
+			ContentType: ensureContentType(step.OutputType),
+			Data:        data,
+		}
+	}
+	return items
+}
+
+func ensureContentType(ct ContentType) ContentType {
+	if ct == "" {
+		return ContentText
+	}
+	return ct
+}
+
+func appendExportedResultsForStep(job *Job, step StepDef, items []ResultItem) {
+	if !step.Export || len(items) == 0 {
+		return
+	}
+	appendExportedResults(job, items)
+}
+
+func appendExportedResults(job *Job, items []ResultItem) {
+	if len(items) == 0 {
+		return
+	}
+	if job.Result == nil {
+		job.Result = &JobResult{}
+	}
+	job.Result.Items = append(job.Result.Items, cloneResultItems(items)...)
+}
+
+func cloneResultItems(items []ResultItem) []ResultItem {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make([]ResultItem, len(items))
+	for i, item := range items {
+		copyItem := item
+		if item.ShardKey != nil {
+			key := *item.ShardKey
+			copyItem.ShardKey = &key
+		}
+		if data, ok := item.Data.(map[string]any); ok {
+			copyItem.Data = cloneMap(data)
+		}
+		cloned[i] = copyItem
+	}
+	return cloned
+}
+
+func cloneMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	clone := make(map[string]any, len(m))
+	for k, v := range m {
+		clone[k] = v
+	}
+	return clone
+}
+
+func ptrString(s string) *string {
+	return &s
+}
+
+func (e *BasicEngine) failStep(job *Job, idx int, code, message string) {
+	if idx < 0 || idx >= len(job.StepExecutions) {
+		return
+	}
+	finish := time.Now().UTC()
+	exec := &job.StepExecutions[idx]
+	exec.Status = StepExecFailed
+	exec.FinishedAt = ptrTime(finish)
+	exec.Error = &JobError{Code: code, Message: message}
+	job.Status = JobStatusFailed
+	job.Error = exec.Error
+	job.UpdatedAt = finish
+	_ = e.store.UpdateJob(job)
 }
 
 func isTerminal(status JobStatus) bool {

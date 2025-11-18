@@ -9,11 +9,11 @@
 
 ## 🔜 v0.2 マイルストーン
 ### Engine / Scheduler
-- [ ] BasicEngine の単一ステップ実装を、`StepDef.DependsOn` に従う DAG 実行へ刷新 (docs/詳細設計書.md §6.2)。
-- [ ] `StepMode` 別（single / fanout / per_item）のワークフローと並列実行制御を実装。
-- [ ] `StepExecution` / `StepCheckpoint` を使い、途中結果の保存と `rerun` API の `from_step_id` / `reuse_upstream` を尊重。
-- [ ] `PromptTemplate` を入力にバインドして Provider へ渡す共通ロジックを導入 (docs/詳細設計書.md §3.2, §6.3)。
-- [ ] `JobRequest.Mode` の sync 実行パスとレスポンス分岐を整備 (docs/詳細設計書.md §5.2)。
+- [x] BasicEngine の単一ステップ実装を、`StepDef.DependsOn` に従う DAG 実行へ刷新 (docs/詳細設計書.md §6.2)。
+- [x] `StepMode` 別（single / fanout / per_item）のワークフローとシリアル実装（将来の並列化のベース）を導入。
+- [x] `StepExecution` / `StepCheckpoint` を使い、途中結果の保存と `rerun` API の `from_step_id` / `reuse_upstream` を尊重（チェックポイントはエンジン内メモリ保持。永続化は別タスク）。
+- [x] `PromptTemplate` を入力にバインドして Provider へ渡す共通ロジックを導入 (docs/詳細設計書.md §3.2, §6.3)。
+- [x] `JobRequest.Mode` の sync 実行パスとレスポンス分岐を整備 (docs/詳細設計書.md §5.2)。
 
 ### Provider 層
 - [ ] ProviderRegistry に OpenAI / Ollama / Image / LocalTool プロバイダを登録・切替できる設定レイヤを実装。
