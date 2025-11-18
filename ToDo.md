@@ -17,7 +17,7 @@
 
 ### Provider 層
 - [x] ProviderRegistry に OpenAI / Ollama / Image / LocalTool プロバイダを登録・切替できる設定レイヤを実装。
-- [ ] OllamaProvider の実 API 連携（OpenAIProvider は完了済み。キーは `PIPELINE_ENGINE_OPENAI_API_KEY` 経由で読み込み可能）。
+- [x] OllamaProvider の実 API 連携（`PIPELINE_ENGINE_ENABLE_OLLAMA` + base/model でローカル Ollama と疎通）。
 - [x] Step ごとの `ProviderOverride` を ProviderProfile にマージする解決順序（ImplementationPlan §1）を実装。
 - [x] 画像/ローカルツール StepKind 用のインターフェースとダミー（もしくは CLI 呼び出し）実装を追加。
 
@@ -31,6 +31,7 @@
 - [x] `/v1/jobs` の `stream=true` と `/v1/jobs/{id}/stream` で StreamingEvent (`job_started`, `item_completed` など) を網羅的に送出。
 - [x] `/v1/jobs/{id}/rerun` の `override_input` を反映し、`parent_job_id` を設定した新規 Job を返す。
 - [x] API エラー形式 `{ error: { code, message, details } }` を全エンドポイントで統一。
+- [x] ストリーム終端を明示する `stream_finished` イベントを追加し、README / 詳細設計書に記載。
 
 ### SDK / クライアント
 - [x] `pkg/sdk/go/client.go` に HTTP クライアント（CreateJob / GetJob / Stream / Cancel / Rerun）を実装。

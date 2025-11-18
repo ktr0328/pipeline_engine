@@ -81,9 +81,10 @@ func TestHandlerCreateJob(t *testing.T) {
 func TestHandlerCreateJobStream(t *testing.T) {
 	t.Parallel()
 
-	evCh := make(chan engine.StreamingEvent, 2)
+	evCh := make(chan engine.StreamingEvent, 3)
 	evCh <- engine.StreamingEvent{Event: "job_status", JobID: "job-stream", Data: minimalJob("job-stream")}
 	evCh <- engine.StreamingEvent{Event: "job_completed", JobID: "job-stream", Data: minimalJob("job-stream")}
+	evCh <- engine.StreamingEvent{Event: "stream_finished", JobID: "job-stream", Data: minimalJob("job-stream")}
 	close(evCh)
 
 	stub := &stubEngine{
@@ -120,13 +121,13 @@ func TestHandlerCreateJobStream(t *testing.T) {
 		events = append(events, evt)
 	}
 
-	if len(events) != 3 {
+	if len(events) != 4 {
 		t.Fatalf("受信したイベント数が想定外です: %+v", events)
 	}
 	if events[0].Event != "job_queued" {
 		t.Fatalf("最初のイベントが job_queued ではありません: %+v", events[0])
 	}
-	if events[1].Event != "job_status" || events[2].Event != "job_completed" {
+	if events[1].Event != "job_status" || events[2].Event != "job_completed" || events[3].Event != "stream_finished" {
 		t.Fatalf("ストリーミングイベントが期待と異なります: %+v", events)
 	}
 }

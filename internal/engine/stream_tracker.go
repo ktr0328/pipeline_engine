@@ -36,6 +36,7 @@ func (t *StreamingTracker) Diff(job *Job) []StreamingEvent {
 				name = "job_cancelled"
 			}
 			events = append(events, StreamingEvent{Event: name, JobID: job.ID, Data: job})
+			events = append(events, StreamingEvent{Event: "stream_finished", JobID: job.ID, Data: job})
 		}
 	}
 

@@ -32,7 +32,10 @@ func TestStreamingTrackerEmitsJobAndStepEvents(t *testing.T) {
 		t.Fatalf("item_completed イベントが含まれていません: %+v", events)
 	}
 	if !containsEvent(events, "job_completed") {
-		t.Fatalf("job_completed イベントが含まれていません: %+v", events)
+			 t.Fatalf("job_completed イベントが含まれていません: %+v", events)
+	}
+	if !containsEvent(events, "stream_finished") {
+			 t.Fatalf("stream_finished イベントが含まれていません: %+v", events)
 	}
 }
 

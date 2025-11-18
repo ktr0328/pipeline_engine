@@ -91,6 +91,7 @@ func TestClientStreamJobs(t *testing.T) {
 		`{"event":"job_queued","job_id":"job-stream","data":{"id":"job-stream","pipeline_type":"demo","pipeline_version":"v0"}}`,
 		`{"event":"job_status","job_id":"job-stream","data":{"status":"running"}}`,
 		`{"event":"job_completed","job_id":"job-stream","data":{"status":"succeeded"}}`,
+		`{"event":"stream_finished","job_id":"job-stream","data":{"status":"succeeded"}}`,
 	}, "\n") + "\n"
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -116,10 +117,10 @@ func TestClientStreamJobs(t *testing.T) {
 		got = append(got, evt)
 	}
 
-	if len(got) != 2 {
-		t.Fatalf("unexpected number of streaming events: %+v", got)
+	if len(got) != 3 {
+		 t.Fatalf("unexpected number of streaming events: %+v", got)
 	}
-	if got[0].Event != "job_status" || got[1].Event != "job_completed" {
-		t.Fatalf("unexpected events: %+v", got)
+	if got[0].Event != "job_status" || got[1].Event != "job_completed" || got[2].Event != "stream_finished" {
+		 t.Fatalf("unexpected events: %+v", got)
 	}
 }

@@ -34,11 +34,11 @@ pkg/                 # 共有ライブラリを追加予定の空ディレクト
 ## プロバイダ設定例
 `engine.NewBasicEngineWithConfig` に `EngineConfig` を渡すことで、OpenAI や Ollama など複数の ProviderProfile を登録できます。Step 定義側で `provider_profile_id` と `provider_override` を指定すると、プロファイルの値を上書きして特定のモデルやエンドポイントを利用できます。
 
-**API キーの渡し方**
+**環境変数の使い方**
 
-- OpenAI の場合、`ProviderProfile.APIKey` に直接埋め込むか、環境変数 `PIPELINE_ENGINE_OPENAI_API_KEY` にセットしておくと自動で参照します。
+- OpenAI の場合、`ProviderProfile.APIKey` に直接埋め込むか、環境変数 `PIPELINE_ENGINE_OPENAI_API_KEY` にセットしておくと自動で参照します。`PIPELINE_ENGINE_OPENAI_BASE_URL` / `PIPELINE_ENGINE_OPENAI_MODEL` を指定するとエンドポイントやモデルも切り替えられます。
 - `BaseURI` は既定で `https://api.openai.com/v1` ですが、ローカルプロキシやモックサーバーに向けたい場合は上書きできます。
-- Ollama など他プロバイダも同様に、将来的に環境変数でキーを渡せるように設計予定です。
+- ローカルの Ollama を利用する場合は `PIPELINE_ENGINE_ENABLE_OLLAMA=1` もしくは `PIPELINE_ENGINE_OLLAMA_BASE_URL` を設定します（既定は `http://127.0.0.1:11434`）。モデルは `PIPELINE_ENGINE_OLLAMA_MODEL` で変更できます。
 
 ```go
 cfg := &engine.EngineConfig{
@@ -120,6 +120,51 @@ Step 側の例:
 }
 ```
 
+## 複数パイプライン例
+`engine.BasicEngine` は任意の数の `PipelineDef` を登録できるため、用途別のパイプラインを複数公開できます。例えば OpenAI ベースの要約と、Ollama ベースの分類を同時に扱う場合は以下のように記述します。
+
+```jsonc
+[
+  {
+    "type": "summarize.v0",
+    "version": "v1",
+    "steps": [
+      {
+        "id": "summary",
+        "kind": "llm",
+        "mode": "single",
+        "provider_profile_id": "openai-cli",
+        "prompt": {
+          "user": "Summarize:\n{{range .Sources}}{{.Content}}\n{{end}}"
+        },
+        "output_type": "markdown",
+        "export": true
+      }
+    ]
+  },
+  {
+    "type": "classify.v0",
+    "version": "v1",
+    "steps": [
+      {
+        "id": "classify",
+        "kind": "llm",
+        "mode": "single",
+        "provider_profile_id": "ollama-cli",
+        "prompt": {
+          "system": "You label feedback strictly in lowercase.",
+          "user": "Label this memo: {{index .Sources 0 .Content}}"
+        },
+        "output_type": "json",
+        "export": true
+      }
+    ]
+  }
+]
+```
+
+`PipelineRegistry.RegisterPipeline` へ順次投入するだけで `/v1/jobs` の `pipeline_type` に両方の値を指定できるようになり、運用中に互いのステップを干渉させることなく拡張できます。
+
 ## セットアップ
 1. Go 1.22 以降を用意します。
 2. 依存関係は `go.mod` の標準ライブラリのみなので追加の `go mod download` は不要です。
@@ -194,7 +239,10 @@ curl -N -H "Content-Type: application/json" \
 | `step_started`      | 各 StepExecution が `running` になったタイミング |
 | `step_completed`    | StepExecution が `success` で完了したタイミング（失敗時は `step_failed`） |
 | `item_completed`    | Export 指定された ResultItem が生成されるたびに送出 |
+| `stream_finished`   | ストリームの終端を通知。以降イベントは届かない |
 | `error`             | ストリーミング取得中にサーバー側でエラーが発生した場合 |
+
+端末側では `stream_finished` を受信したタイミングで NDJSON の読み取りを終了すれば確実です（その前に `job_completed` / `job_failed` / `job_cancelled` が届きます）。
 
 ### キャンセルとリラン
 ```bash
@@ -236,6 +284,164 @@ curl -s \
 ```
 
 `stream=true` を付けておくと NDJSON イベント（`job_queued`, `job_status`, `item_completed` など）を受け取りながら OpenAI の応答をリアルタイムで確認できます。
+
+### CLI から Ollama プロファイルを使ったジョブ実行
+ローカルで Ollama サーバー（`ollama serve`）を起動した状態で `PIPELINE_ENGINE_ENABLE_OLLAMA=1` を指定してサーバーを立ち上げると、`ollama.summarize.v1` パイプラインが登録されます。OpenAI と同様に 2 つのターミナルで動作を確認できます。
+
+**ターミナル1:**
+
+```bash
+export PIPELINE_ENGINE_ENABLE_OLLAMA=1
+# 必要に応じて BASE_URL / MODEL を上書き
+# export PIPELINE_ENGINE_OLLAMA_BASE_URL="http://127.0.0.1:11434"
+# export PIPELINE_ENGINE_OLLAMA_MODEL="llama3"
+make run
+```
+
+**ターミナル2:**
+
+```bash
+curl -s \
+  -H "Content-Type: application/json" \
+  -d '{
+        "pipeline_type": "ollama.summarize.v1",
+        "input": {
+          "sources": [
+            { "kind": "note", "label": "memo", "content": "Ollama 呼び出しテスト" }
+          ]
+        }
+      }' \
+  "http://127.0.0.1:8085/v1/jobs?stream=true"
+```
+
+`job_completed`（または `job_failed` / `job_cancelled`）に続いて `stream_finished` が届くまでがワンセットです。`item_completed` には Ollama から返却されたテキストがそのまま入るため、ストリームを読みながら応答を確認できます。
+
+### CLI で複数パイプラインを切り替えて実行
+OpenAI / Ollama の両方を有効化しておくと、`pipeline_type` を変えるだけで異なるパイプラインを同じサーバー経由で呼び分けられます。
+
+**ターミナル1:**
+
+```bash
+export PIPELINE_ENGINE_OPENAI_API_KEY="sk-..."
+export PIPELINE_ENGINE_ENABLE_OLLAMA=1
+make run
+```
+
+**ターミナル2:**
+
+```bash
+# OpenAI summary
+curl -s -H "Content-Type: application/json" \
+  -d '{
+        "pipeline_type": "openai.summarize.v1",
+        "input": { "sources": [ { "kind": "note", "content": "まとめたい文章" } ] }
+      }' \
+  "http://127.0.0.1:8085/v1/jobs?stream=true"
+
+# Ollama classify
+curl -s -H "Content-Type: application/json" \
+  -d '{
+        "pipeline_type": "ollama.summarize.v1",
+        "input": { "sources": [ { "kind": "note", "content": "分類対象メモ" } ] }
+      }' \
+  "http://127.0.0.1:8085/v1/jobs?stream=true"
+```
+
+2 つのパイプラインは同一ジョブストアを共有しつつ、各ステップがそれぞれの ProviderProfile を参照するため互いに干渉せずに実行できます。
+
+### ストリーミングで雑学→Markdown 変換を 1 リクエスト実行
+`openai.funmarkdown.v1` パイプラインは以下の 3 ステップ構成です。
+1. **Random Trivia**: 口語の導入文と `タイトル:/まとめ:/理由:/ディテール:` ラベル付きテキストを生成
+2. **Enrich Trivia**: 1 の内容を引き継ぎ、背景説明や追加のトリビアを挿入して厚みを出す
+3. **Format Trivia**: 2 のラベルを解析し、「## 見出し」「> 要約」「### ポイント」「### ディテール」を備えた Markdown に整形
+
+すべてのステップが `export=true` になっているため、`stream=true` を付けると口語アウトライン → 深掘り → Markdown という流れを順番に受け取れます。
+
+```bash
+export PIPELINE_ENGINE_OPENAI_API_KEY="sk-..."
+make run
+
+curl -N -H "Content-Type: application/json" \
+  -d '{
+        "pipeline_type": "openai.funmarkdown.v1",
+        "input": {
+          "sources": [ { "kind": "note", "content": "雑学を話して" } ]
+        }
+      }' \
+  "http://127.0.0.1:8085/v1/jobs?stream=true"
+```
+
+代表的なレスポンス（抜粋）:
+
+```jsonc
+{"event":"step_started","data":{"step_id":"trivia"}}
+{"event":"item_completed","data":{"label":"default","step_id":"trivia","data":{"text":"そういえば、富士山には面白い逸話がありまして…\nタイトル: 富士山の余談\nまとめ: ..."}}}
+{"event":"step_started","data":{"step_id":"enrich"}}
+{"event":"item_completed","data":{"label":"default","step_id":"enrich","data":{"text":"そういえば、富士山には面白い逸話がありまして…(詳細版)\nタイトル: 富士山の余談\nまとめ: ...（追記あり）"}}}
+{"event":"step_started","data":{"step_id":"markdown"}}
+{"event":"item_completed","data":{"label":"default","step_id":"markdown","data":{"text":"## 富士山の余談\n> 要約…\n\n### ポイント\n1. …\n\n### ディテール\n- …"}}}
+{"event":"job_completed","data":{"status":"succeeded"}}
+{"event":"stream_finished","data":{"status":"succeeded"}}
+```
+
+このように 1 つのリクエストで生成→整形のパイプラインを構築でき、ストリーミングで各段階の応答をフロントエンドへ即時配信できます。
+
+### CLI でパイプラインを連結（OpenAI → OpenAI）
+`mode":"sync"` を指定するとジョブ完了まで待って結果を返すため、1 回目の結果をそのまま次のパイプラインに渡すシンプルな bash スクリプトが書けます。下記は要約 → 校正の 2 段を OpenAI パイプラインで直列実行する例です。
+
+```bash
+export PIPELINE_ENGINE_OPENAI_API_KEY="sk-..."
+
+# 1. summarize.v1 で入力を要約
+SUMMARY=$(curl -s -H "Content-Type: application/json" \
+  -d @- http://127.0.0.1:8085/v1/jobs <<'JSON' | jq -r '.result.items[0].data.text'
+{
+  "mode": "sync",
+  "pipeline_type": "openai.summarize.v1",
+  "input": {
+    "sources": [ { "kind": "note", "content": "この文章を要約してから校正したい" } ]
+  }
+}
+JSON
+)
+
+# 2. summarize.v1 を再利用して校正用プロンプトを流用
+curl -s -H "Content-Type: application/json" \
+  -d @- http://127.0.0.1:8085/v1/jobs <<JSON | jq -r '.result.items[0].data.text'
+{
+  "mode": "sync",
+  "pipeline_type": "openai.summarize.v1",
+  "input": {
+    "sources": [ { "kind": "note", "content": "校正して:\n$SUMMARY" } ]
+  }
+}
+JSON
+```
+
+ここでは同じ `openai.summarize.v1` を 2 度呼び出していますが、別種のパイプラインを組み合わせても問題なく動作します。`SUMMARY` 変数に格納されるテキストは `jq` で抽出しているため、そのまま任意のコマンドに渡せます。
+
+### 単一リクエストで連結（`openai.chain.v1`）
+OpenAI プロファイルが有効な場合はデモ用に `openai.chain.v1` パイプラインも自動登録されます。これは Step1 で要約、Step2 で校正する 2 ノード構成になっており、1 回の API リクエストで連結処理を実現します。
+
+```bash
+export PIPELINE_ENGINE_OPENAI_API_KEY="sk-..."
+make run
+
+curl -s \
+  -H "Content-Type: application/json" \
+  -d '{
+        "mode": "sync",
+        "pipeline_type": "openai.chain.v1",
+        "input": {
+          "sources": [
+            { "kind": "note", "label": "memo", "content": "この記事を 3 行でまとめ、最後に丁寧語で校正してください" }
+          ]
+        }
+      }' \
+  "http://127.0.0.1:8085/v1/jobs"
+```
+
+レスポンスの `result.items[0]` には Step2（校正）の出力のみが格納され、Step1 の要約は内部で依存関係として利用されます。テンプレートでは `{{with index .Previous "summarize"}}...{{end}}` のように前段ステップの結果へアクセスできるため、さらに複雑な連結処理も 1 つのパイプライン型としてまとめられます。
 
 ## API サマリー
 | Method | Path | 説明 |
