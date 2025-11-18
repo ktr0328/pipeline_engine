@@ -298,7 +298,7 @@ func (e *BasicEngine) executeJob(ctx context.Context, jobID string) {
 		}
 
 		prompt := buildPrompt(step, job, stepOutputs)
-		items, execErr := e.runStep(ctx, job, step, prompt, stepOutputs)
+		items, execErr := e.runStep(ctx, job, idx, step, prompt, stepOutputs)
 		if execErr != nil {
 			code := "step_failed"
 			if errors.Is(execErr, context.Canceled) {
@@ -567,7 +567,7 @@ func executeTemplateText(text string, data any) string {
 	return b.String()
 }
 
-func (e *BasicEngine) runStep(ctx context.Context, job *Job, step StepDef, prompt string, outputs map[StepID][]ResultItem) ([]ResultItem, error) {
+func (e *BasicEngine) runStep(ctx context.Context, job *Job, execIdx int, step StepDef, prompt string, outputs map[StepID][]ResultItem) ([]ResultItem, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -585,7 +585,7 @@ func (e *BasicEngine) runStep(ctx context.Context, job *Job, step StepDef, promp
 
 	switch step.Mode {
 	case StepModeFanOut:
-		return e.runFanOutStep(ctx, provider, profile, step, job, prompt, inputCtx)
+		return e.runFanOutStep(ctx, execIdx, provider, profile, step, job, prompt, inputCtx)
 	case StepModePerItem:
 		var base []ResultItem
 		if len(step.DependsOn) > 0 {
@@ -595,19 +595,22 @@ func (e *BasicEngine) runStep(ctx context.Context, job *Job, step StepDef, promp
 			}
 		}
 		if len(base) == 0 {
-			return e.runFanOutStep(ctx, provider, profile, step, job, prompt, inputCtx)
-		}
-		return e.runPerItemStep(ctx, provider, profile, step, job, prompt, inputCtx, base)
+		return e.runFanOutStep(ctx, execIdx, provider, profile, step, job, prompt, inputCtx)
+	}
+	return e.runPerItemStep(ctx, execIdx, provider, profile, step, job, prompt, inputCtx, base)
 	default:
-		return e.runSingleStep(ctx, provider, profile, step, job, prompt, inputCtx)
+		return e.runSingleStep(ctx, execIdx, provider, profile, step, job, prompt, inputCtx)
 	}
 }
 
-func (e *BasicEngine) runSingleStep(ctx context.Context, provider Provider, profile ProviderProfile, step StepDef, job *Job, prompt string, input ProviderInput) ([]ResultItem, error) {
-	text, meta, err := e.callProvider(ctx, provider, profile, step, prompt, input)
+func (e *BasicEngine) runSingleStep(ctx context.Context, execIdx int, provider Provider, profile ProviderProfile, step StepDef, job *Job, prompt string, input ProviderInput) ([]ResultItem, error) {
+	resp, err := e.callProvider(ctx, provider, profile, step, prompt, input)
 	if err != nil {
 		return nil, err
 	}
+	e.recordChunks(job, execIdx, resp.Chunks)
+	text := resp.Output
+	meta := resp.Metadata
 	if text == "" {
 		text = fmt.Sprintf("step %s processed %d sources", step.ID, len(job.Input.Sources))
 	}
@@ -615,18 +618,21 @@ func (e *BasicEngine) runSingleStep(ctx context.Context, provider Provider, prof
 	return []ResultItem{item}, nil
 }
 
-func (e *BasicEngine) runFanOutStep(ctx context.Context, provider Provider, profile ProviderProfile, step StepDef, job *Job, prompt string, input ProviderInput) ([]ResultItem, error) {
+func (e *BasicEngine) runFanOutStep(ctx context.Context, execIdx int, provider Provider, profile ProviderProfile, step StepDef, job *Job, prompt string, input ProviderInput) ([]ResultItem, error) {
 	if len(job.Input.Sources) == 0 {
-		return e.runSingleStep(ctx, provider, profile, step, job, prompt, input)
+		return e.runSingleStep(ctx, execIdx, provider, profile, step, job, prompt, input)
 	}
 	items := make([]ResultItem, len(job.Input.Sources))
 	for i, src := range job.Input.Sources {
 		localInput := input
 		localInput.Sources = []Source{src}
-		text, meta, err := e.callProvider(ctx, provider, profile, step, prompt, localInput)
+		resp, err := e.callProvider(ctx, provider, profile, step, prompt, localInput)
 		if err != nil {
 			return nil, err
 		}
+		e.recordChunks(job, execIdx, resp.Chunks)
+		text := resp.Output
+		meta := resp.Metadata
 		if text == "" {
 			text = fmt.Sprintf("step %s handled source %s", step.ID, src.Label)
 		}
@@ -635,17 +641,20 @@ func (e *BasicEngine) runFanOutStep(ctx context.Context, provider Provider, prof
 	return items, nil
 }
 
-func (e *BasicEngine) runPerItemStep(ctx context.Context, provider Provider, profile ProviderProfile, step StepDef, job *Job, prompt string, input ProviderInput, base []ResultItem) ([]ResultItem, error) {
+func (e *BasicEngine) runPerItemStep(ctx context.Context, execIdx int, provider Provider, profile ProviderProfile, step StepDef, job *Job, prompt string, input ProviderInput, base []ResultItem) ([]ResultItem, error) {
 	items := make([]ResultItem, len(base))
 	for i, prev := range base {
 		localInput := input
 		localInput.Previous = map[StepID][]ResultItem{
 			prev.StepID: {prev},
 		}
-		text, meta, err := e.callProvider(ctx, provider, profile, step, prompt, localInput)
+		resp, err := e.callProvider(ctx, provider, profile, step, prompt, localInput)
 		if err != nil {
 			return nil, err
 		}
+		e.recordChunks(job, execIdx, resp.Chunks)
+		text := resp.Output
+		meta := resp.Metadata
 		if text == "" {
 			shard := ""
 			if prev.ShardKey != nil {
@@ -727,20 +736,29 @@ func buildPerItemResult(step StepDef, prompt string, prev ResultItem, idx int, t
 	}
 }
 
-func (e *BasicEngine) callProvider(ctx context.Context, provider Provider, profile ProviderProfile, step StepDef, prompt string, input ProviderInput) (string, map[string]any, error) {
+func (e *BasicEngine) callProvider(ctx context.Context, provider Provider, profile ProviderProfile, step StepDef, prompt string, input ProviderInput) (ProviderResponse, error) {
 	if provider == nil {
-		return "", nil, nil
+		return ProviderResponse{}, nil
 	}
-	resp, err := provider.Call(ctx, ProviderRequest{
+	return provider.Call(ctx, ProviderRequest{
 		Step:    step,
 		Prompt:  prompt,
 		Profile: profile,
 		Input:   input,
 	})
-	if err != nil {
-		return "", nil, err
+}
+
+func (e *BasicEngine) recordChunks(job *Job, execIdx int, chunks []ProviderChunk) {
+	if len(chunks) == 0 || execIdx < 0 || execIdx >= len(job.StepExecutions) {
+		return
 	}
-	return resp.Output, resp.Metadata, nil
+	stepExec := &job.StepExecutions[execIdx]
+	for _, chunk := range chunks {
+		index := len(stepExec.Chunks)
+		stepExec.Chunks = append(stepExec.Chunks, StepChunk{StepID: stepExec.StepID, Index: index, Content: chunk.Content})
+	}
+	job.UpdatedAt = time.Now().UTC()
+	_ = e.store.UpdateJob(job)
 }
 
 func (e *BasicEngine) resolveProvider(step StepDef) (Provider, ProviderProfile) {

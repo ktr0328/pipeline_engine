@@ -28,6 +28,11 @@ type ProviderInput struct {
 type ProviderResponse struct {
 	Output   string
 	Metadata map[string]any
+	Chunks   []ProviderChunk
+}
+
+type ProviderChunk struct {
+	Content string
 }
 
 // Provider describes an abstract LLM / tool executor.
@@ -122,6 +127,27 @@ func mergeProfile(base ProviderProfile, overrides map[string]any) ProviderProfil
 		}
 	}
 	return result
+}
+
+func buildChunksFromText(text string) []ProviderChunk {
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) == 0 {
+		return nil
+	}
+	const chunkSize = 280
+	chunks := make([]ProviderChunk, 0, (len(runes)/chunkSize)+1)
+	for start := 0; start < len(runes); start += chunkSize {
+		end := start + chunkSize
+		if end > len(runes) {
+			end = len(runes)
+		}
+		segment := strings.TrimSpace(string(runes[start:end]))
+		if segment == "" {
+			continue
+		}
+		chunks = append(chunks, ProviderChunk{Content: segment})
+	}
+	return chunks
 }
 
 // RegisterDefaultProviderFactories registers stub providers for supported kinds.

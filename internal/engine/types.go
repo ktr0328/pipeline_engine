@@ -171,6 +171,13 @@ type StepExecution struct {
 	StartedAt  *time.Time          `json:"started_at,omitempty"`
 	FinishedAt *time.Time          `json:"finished_at,omitempty"`
 	Error      *JobError           `json:"error,omitempty"`
+	Chunks     []StepChunk         `json:"chunks,omitempty"`
+}
+
+type StepChunk struct {
+	StepID  StepID `json:"step_id"`
+	Index   int    `json:"index"`
+	Content string `json:"content"`
 }
 
 type Job struct {

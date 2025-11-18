@@ -6,11 +6,12 @@ type StreamingTracker struct {
 	stepStatus    map[StepID]StepExecutionStatus
 	lastItemCount int
 	sentStarted   bool
+	chunkCount    map[StepID]int
 }
 
 // NewStreamingTracker returns an initialized tracker.
 func NewStreamingTracker() *StreamingTracker {
-	return &StreamingTracker{stepStatus: map[StepID]StepExecutionStatus{}}
+	return &StreamingTracker{stepStatus: map[StepID]StepExecutionStatus{}, chunkCount: map[StepID]int{}}
 }
 
 // Diff compares the provided job against prior state and returns events to emit.
@@ -55,6 +56,16 @@ func (t *StreamingTracker) Diff(job *Job) []StreamingEvent {
 			events = append(events, StreamingEvent{Event: "step_failed", JobID: job.ID, Data: step})
 		case StepExecCancelled:
 			events = append(events, StreamingEvent{Event: "step_cancelled", JobID: job.ID, Data: step})
+		}
+
+		if len(step.Chunks) > 0 {
+			seen := t.chunkCount[step.StepID]
+			if len(step.Chunks) > seen {
+				for _, chunk := range step.Chunks[seen:] {
+					events = append(events, StreamingEvent{Event: "provider_chunk", JobID: job.ID, Data: chunk})
+				}
+				t.chunkCount[step.StepID] = len(step.Chunks)
+			}
 		}
 	}
 

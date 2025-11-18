@@ -25,13 +25,13 @@ stateDiagram-v2
 
     note right of JobQueued: job_queued
     note right of JobRunning: job_started / job_status
-    note right of StepTrivia: step_started / step_completed / item_completed
-    note right of StepEnrich: step_started / step_completed / item_completed
-    note right of StepMarkdown: step_started / step_completed / item_completed
+    note right of StepTrivia: step_started / provider_chunk / step_completed / item_completed
+    note right of StepEnrich: step_started / provider_chunk / step_completed / item_completed
+    note right of StepMarkdown: step_started / provider_chunk / step_completed / item_completed
     note right of JobSucceeded: job_status(succeeded) / job_completed / stream_finished
 ```
 
 - `JobQueued` → `JobRunning`：`RunJob` が呼ばれ、`job_started` と最新 `job_status` が送出されます。
-- 各ステップ（trivia → enrich → markdown）は `step_started` → `step_completed` を発火し、`Export=true` のため `item_completed` で途中結果を配信します。
+- 各ステップ（trivia → enrich → markdown）は `step_started` → `step_completed` を発火し、`provider_chunk` で LLM chunk を逐次送出、`item_completed` で Step 結果を配信します。
 - 全ステップが `success` になると `job_status`(succeeded) と `job_completed`、そして終端を示す `stream_finished` が送出されます。
 - エラー / キャンセル時は `job_failed` / `job_cancelled` とともに `stream_finished` が届き、該当ステップにも `step_failed` / `step_cancelled` が送出されます。

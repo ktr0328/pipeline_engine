@@ -106,6 +106,6 @@ func callOllama(ctx context.Context, req ProviderRequest, profile ProviderProfil
 		"provider": "ollama",
 		"model":    modelName,
 	}
-	logging.Debugf("ollama call success profile=%s model=%s", profile.ID, modelName)
-	return ProviderResponse{Output: decoded.Response, Metadata: meta}, nil
+    logging.Debugf("ollama call success profile=%s model=%s", profile.ID, modelName)
+    return ProviderResponse{Output: decoded.Response, Metadata: meta, Chunks: buildChunksFromText(decoded.Response)}, nil
 }

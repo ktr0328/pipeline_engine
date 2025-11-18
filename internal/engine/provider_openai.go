@@ -112,6 +112,6 @@ func callOpenAI(ctx context.Context, req ProviderRequest, profile ProviderProfil
 		"provider": "openai",
 		"model":    model,
 	}
-	logging.Debugf("openai call success profile=%s model=%s", profile.ID, model)
-	return ProviderResponse{Output: text, Metadata: meta}, nil
+    logging.Debugf("openai call success profile=%s model=%s", profile.ID, model)
+    return ProviderResponse{Output: text, Metadata: meta, Chunks: buildChunksFromText(text)}, nil
 }

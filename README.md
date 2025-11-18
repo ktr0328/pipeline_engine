@@ -241,9 +241,10 @@ curl -N -H "Content-Type: application/json" \
 | `step_completed`    | StepExecution が `success` で完了したタイミング（失敗時は `step_failed`） |
 | `item_completed`    | Export 指定された ResultItem が生成されるたびに送出 |
 | `stream_finished`   | ストリームの終端を通知。以降イベントは届かない |
+| `provider_chunk`    | Provider から届く LLM chunk。`StepChunk` として `data` に格納 |
 | `error`             | ストリーミング取得中にサーバー側でエラーが発生した場合 |
 
-端末側では `stream_finished` を受信したタイミングで NDJSON の読み取りを終了すれば確実です（その前に `job_completed` / `job_failed` / `job_cancelled` が届きます）。
+端末側では `provider_chunk` を受け取っている間に即座に UI へ反映し、`stream_finished` を受信したタイミングで NDJSON の読み取りを終了すれば確実です（その前に `job_completed` / `job_failed` / `job_cancelled` が届きます）。
 
 ### キャンセルとリラン
 ```bash
@@ -376,10 +377,13 @@ curl -N -H "Content-Type: application/json" \
 
 ```jsonc
 {"event":"step_started","data":{"step_id":"trivia"}}
+{"event":"provider_chunk","data":{"step_id":"trivia","index":0,"content":"そういえば、富士山には…"}}
 {"event":"item_completed","data":{"label":"default","step_id":"trivia","data":{"text":"そういえば、富士山には面白い逸話がありまして…\nタイトル: 富士山の余談\nまとめ: ..."}}}
 {"event":"step_started","data":{"step_id":"enrich"}}
+{"event":"provider_chunk","data":{"step_id":"enrich","index":0,"content":"富士山の余談をさらに掘り下げると…"}}
 {"event":"item_completed","data":{"label":"default","step_id":"enrich","data":{"text":"そういえば、富士山には面白い逸話がありまして…(詳細版)\nタイトル: 富士山の余談\nまとめ: ...（追記あり）"}}}
 {"event":"step_started","data":{"step_id":"markdown"}}
+{"event":"provider_chunk","data":{"step_id":"markdown","index":0,"content":"## 富士山の余談\n> 要約…"}}
 {"event":"item_completed","data":{"label":"default","step_id":"markdown","data":{"text":"## 富士山の余談\n> 要約…\n\n### ポイント\n1. …\n\n### ディテール\n- …"}}}
 {"event":"job_completed","data":{"status":"succeeded"}}
 {"event":"stream_finished","data":{"status":"succeeded"}}
