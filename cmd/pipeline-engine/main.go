@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/example/pipeline-engine/internal/engine"
 	"github.com/example/pipeline-engine/internal/server"
@@ -28,10 +31,15 @@ func main() {
 	go func() {
 		<-ctx.Done()
 		log.Println("shutting down pipeline engine")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("graceful shutdown failed: %v", err)
+		}
 	}()
 
 	log.Printf("pipeline engine listening on %s\n", addr)
-	if err := srv.ListenAndServe(addr); err != nil {
+	if err := srv.ListenAndServe(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("server exited: %v", err)
 	}
 }
