@@ -546,7 +546,7 @@ PIPELINE_ENGINE_ENGINE_VERSION=v0.2.0 npm install ./pkg/engine/typescript
 
 ## CI / リリース
 - `.github/workflows/ci.yml`: push / PR / 手動トリガーで `make test` を実行し、Go と TypeScript の両方を検証します。
-- `.github/workflows/release.yml`: `v*` タグの push で Linux / macOS / Windows 向けバイナリをクロスビルドし、GitHub Releases にアップロードします。`@pipeforge/engine` の `postinstall` はこれらのアセット URL を既定で参照します。
+- `.github/workflows/release.yml`: `v*` タグの push で Linux / macOS / Windows 向けバイナリをクロスビルドし、GitHub Releases にアップロードします。`@pipeforge/engine` の `postinstall` はこれらのアセット URL を既定で参照します。また同じワークフローで `@pipeforge/sdk` / `@pipeforge/engine` の npm パッケージを自動 publish します（`NPM_TOKEN` Secret が必要）。
 
 ## ライセンス
 本リポジトリは [Apache License 2.0](LICENSE) の下で提供されています。
