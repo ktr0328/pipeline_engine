@@ -502,5 +502,14 @@ curl -s \
   - `provider_chunk_count`: Provider chunk 送出数
 - chunk イベントは `provider_chunk` としてストリーミング中に届くので、UI 側はこれを逐次描画し、`stream_finished` 受信時にストリームを閉じてください。
 
+## TypeScript SDK
+`pkg/sdk/typescript` に Node.js / Electron 向けのクライアント SDK を同梱しています。`PipelineEngineClient` を利用すると、`streamJobs()` で NDJSON を `AsyncIterable` として処理でき、`provider_chunk` を容易に扱えます。
+
+```
+npm install ./pkg/sdk/typescript
+```
+
+詳細は [pkg/sdk/typescript/README.md](pkg/sdk/typescript/README.md) を参照してください。
+
 ## ライセンス
 本リポジトリは [Apache License 2.0](LICENSE) の下で提供されています。

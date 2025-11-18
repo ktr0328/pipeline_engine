@@ -37,6 +37,7 @@
 ### SDK / クライアント
 - [x] `pkg/sdk/go/client.go` に HTTP クライアント（CreateJob / GetJob / Stream / Cancel / Rerun）を実装。
 - [x] curl 以外の利用者向けに TypeScript / Python SDK 設計メモを追加。
+- [x] TypeScript SDK の最小実装を `pkg/sdk/typescript` に追加（Electron からのストリーミング chunk 対応）。
 
 ### テスト / DevEx
 - [x] Engine / store / HTTP ハンドラ向けのユニットテストを整備し、`go test ./...` で基本的な動作確認が可能。
