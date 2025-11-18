@@ -210,16 +210,22 @@ curl -X POST -H "Content-Type: application/json" \
 ```
 
 ### CLI から OpenAI プロファイルを使ったジョブ実行
-OpenAI API を利用する場合は、環境変数 `PIPELINE_ENGINE_OPENAI_API_KEY` を設定し、`provider_profile_id` に OpenAI 用の ID を指定してジョブを送ります。
+OpenAI API キーを設定して `make run` を起動すると、`openai.summarize.v1` パイプラインが自動登録され、`provider_profile_id=openai-cli` が利用できるようになります。
+
+**ターミナル1:**
 
 ```bash
 export PIPELINE_ENGINE_OPENAI_API_KEY="sk-..."
-go run ./cmd/pipeline-engine &
+make run
+```
 
+**ターミナル2:**
+
+```bash
 curl -s \
   -H "Content-Type: application/json" \
   -d '{
-        "pipeline_type": "summarize.v0",
+        "pipeline_type": "openai.summarize.v1",
         "input": {
           "sources": [
             { "kind": "note", "label": "memo", "content": "OpenAI 呼び出しテスト" }
@@ -229,7 +235,7 @@ curl -s \
   "http://127.0.0.1:8085/v1/jobs?stream=true"
 ```
 
-`stream=true` を付けておくと NDJSON イベント（`job_queued`, `job_status`, `item_completed` など）を受け取りながら OpenAI の応答を確認できます。
+`stream=true` を付けておくと NDJSON イベント（`job_queued`, `job_status`, `item_completed` など）を受け取りながら OpenAI の応答をリアルタイムで確認できます。
 
 ## API サマリー
 | Method | Path | 説明 |
