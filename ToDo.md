@@ -44,6 +44,8 @@
 ### テスト / DevEx
 - [x] Engine / store / HTTP ハンドラ向けのユニットテストを整備し、`go test ./...` で基本的な動作確認が可能。
 - [x] `make dev` などのタスクランナー（lint, test, run）を準備。
+- [x] GitHub Actions CI (`make test`) を設定し、Go / TypeScript の自動テストを実行。
+- [x] リリース用ワークフローで各 OS 向けバイナリをビルドし、GitHub Releases へ配布。
 
 ## 🗺️ ミドルターム (README ロードマップ参照)
 - [ ] DAG スケジューラの高度化：複数ノード並列、リトライ、ステップ毎のタイムアウト設定。

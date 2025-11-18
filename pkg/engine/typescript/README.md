@@ -4,14 +4,14 @@ Electron / Node.js アプリから Pipeline Engine バイナリを起動・停�
 
 ## バイナリ配置 / ダウンロード
 
-このパッケージ自体にはバイナリは含まれていません。以下いずれかの方法で配置してください。
+`postinstall` は GitHub Releases (`v${package.json version}`) からプラットフォーム / アーキテクチャに応じた `pipeline-engine-<platform>-<arch>` を自動でダウンロードし、`bin/` に格納します。まだリリースされていないバージョンや独自ビルドを利用したい場合は、以下の方法で上書きできます。
 
-1. **環境変数でコピー**  
-   - `PIPELINE_ENGINE_ENGINE_SOURCE=/absolute/path/to/pipeline-engine` をセットした状態で `npm install` すると、postinstall が `pkg/engine/typescript/bin/` へコピーします。
-2. **URL からダウンロード**  
-   - `PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL=https://example.com/pipeline-engine-darwin-arm64` のように直接 URL を指定するか、`PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL_TEMPLATE=https://example.com/{{version}}/pipeline-engine-{{platform}}-{{arch}}` とテンプレートを設定してください（`{{version}}` は `PIPELINE_ENGINE_ENGINE_VERSION` が利用されます。既定は `latest`）。postinstall および `npm run engine:download` がダウンロードします。
-3. **手動で配置**  
-   - 任意の場所にバイナリを置き、`PIPELINE_ENGINE_BIN_PATH` を指すか、`EngineProcess` の `binaryPath` オプションに絶対パスを渡します。
+1. **既存バイナリをコピー**  
+   - `PIPELINE_ENGINE_ENGINE_SOURCE=/absolute/path/to/pipeline-engine` をセットした状態で `npm install` すると、postinstall が `bin/` へコピーします。
+2. **URL / テンプレート指定**  
+   - `PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL` で直接 URL を指定するか、`PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL_TEMPLATE=https://example.com/{{version}}/pipeline-engine-{{platform}}-{{arch}}{{ext}}` のようにテンプレートを設定します。`{{version}}` は `PIPELINE_ENGINE_ENGINE_VERSION`（既定は package.json の `version`）が使われます。
+3. **手動配置**  
+   - 任意の場所にバイナリを配置し、`PIPELINE_ENGINE_BIN_PATH` で絶対パスを渡すか `EngineProcess` の `binaryPath` を指定します。
 
 > `npm run engine:download` は `PIPELINE_ENGINE_ENGINE_SOURCE` / `PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL[_TEMPLATE]` が未設定の場合にエラーを返すため、CI などでバイナリ取得を強制したいときに利用してください。
 

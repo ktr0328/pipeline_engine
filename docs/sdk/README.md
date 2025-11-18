@@ -30,7 +30,7 @@ await stream.untilDone();
 - `fetch`（ブラウザ）や `node-fetch` を利用し、ヘッダー上書き（API キーや Host）も指定可能にする。
 - ストリーミング処理はブラウザなら `ReadableStream`, Node なら `node:stream` で NDJSON を読み取る。
 - npm パッケージ（`@pipeline-engine/sdk`）として公開し、型定義を同梱する。
-- Electron でエンジンバイナリを子プロセスとして扱うための補助パッケージ `@pipeline-engine/engine` を別途用意し、`EngineProcess` でバイナリ起動と `/health` 待機をカプセル化する。
+- Electron でエンジンバイナリを子プロセスとして扱うための補助パッケージ `@pipeline-engine/engine` を別途用意し、`EngineProcess` でバイナリ起動と `/health` 待機をカプセル化する。`postinstall` は GitHub Releases のバイナリを既定で取得し、必要に応じて環境変数で URL / テンプレートを上書きできるようにする。
 
 ## Python SDK
 

@@ -1,4 +1,4 @@
-import { access, chmod, copyFile, mkdir, writeFile } from "node:fs/promises";
+import { access, chmod, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -7,6 +7,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const binDir = path.resolve(__dirname, "../bin");
 const binaryName = process.platform === "win32" ? "pipeline-engine.exe" : "pipeline-engine";
 const binaryPath = path.join(binDir, binaryName);
+const packageJSON = JSON.parse(
+  await readFile(path.resolve(__dirname, "../package.json"), "utf8")
+);
+const packageVersion = packageJSON.version ?? "latest";
+const DEFAULT_TEMPLATE = `https://github.com/ktr0328/pipeline_engine/releases/download/v{{version}}/pipeline-engine-{{platform}}-{{arch}}{{ext}}`;
 
 function log(message, quiet) {
   if (!quiet) {
@@ -42,20 +47,23 @@ function archSlug() {
   }
 }
 
+function fileExtension() {
+  return process.platform === "win32" ? ".exe" : "";
+}
+
 function buildDownloadUrl() {
   const direct = process.env.PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL;
   if (direct) {
     return direct;
   }
-  const template = process.env.PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL_TEMPLATE;
-  if (!template) {
-    return undefined;
-  }
-  const version = process.env.PIPELINE_ENGINE_ENGINE_VERSION ?? "latest";
+  const template =
+    process.env.PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL_TEMPLATE ?? DEFAULT_TEMPLATE;
+  const version = process.env.PIPELINE_ENGINE_ENGINE_VERSION ?? packageVersion ?? "latest";
   return template
     .replaceAll("{{platform}}", platformSlug())
     .replaceAll("{{arch}}", archSlug())
-    .replaceAll("{{version}}", version);
+    .replaceAll("{{version}}", version)
+    .replaceAll("{{ext}}", fileExtension());
 }
 
 async function downloadBinary(url) {
