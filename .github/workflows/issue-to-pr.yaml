@@ -46,7 +46,7 @@ jobs:
           BRANCH="codex/issue-${{ github.event.issue.number }}"
           git switch -c "$BRANCH"
 
-          # クリーンな状態にしておく
+          # クリーンな状態にしておく（Codex が余計なの読まないように）
           if [ -d "node_modules" ]; then
             rm -rf node_modules
           fi
@@ -59,14 +59,13 @@ jobs:
             "${ISSUE_BODY}" \
             "IMPORTANT: 最後に \`npm ci && npm run build\` を実行してエラーが出ないことを確認してください。IMPORTANT: .git のような '.' から始まるディレクトリやファイルは絶対に変更しないでください。")"
 
-          # ★ここが今の Codex CLI 用のコア部分
+          # CLI の Usage に従った形に修正
           codex exec \
             --full-auto \
-            --dangerously-bypass-approvals-and-sandbox \
             --cd . \
             "${PROMPT}"
 
-          # Codex がコミットしていない/できなかった場合でも、差分があれば拾う
+          # Codex が変更を作った場合だけ commit & push
           if [[ -n "$(git status --porcelain)" ]]; then
             git add .
             git commit -m "Fix: #${{ github.event.issue.number }} - ${ISSUE_TITLE}"
@@ -76,12 +75,12 @@ jobs:
           fi
 
       - name: Create Pull Request
-        # ブランチが存在する場合だけ PR 作成を試みる
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN || github.token }}
         run: |
           BRANCH="codex/issue-${{ github.event.issue.number }}"
 
+          # ブランチが origin に存在する場合だけ PR 作成
           if git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then
             gh pr create \
               --title "Fix: #${{ github.event.issue.number }} – ${{ github.event.issue.title }}" \
