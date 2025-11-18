@@ -1,4 +1,4 @@
-name: Issue to PR with Codex
+name: Issue to PR with Codex (Go)
 
 on:
   issues:
@@ -21,10 +21,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      # Go 本体はこっちで用意（Codexが go test 叩けるように）
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Codex CLI 用に Node.js を入れる
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "latest"
+          node-version: '20'
 
       - name: Install Codex CLI
         run: npm install -g @openai/codex
@@ -33,7 +40,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          # OPENAI_API_KEY を stdin 経由で渡してログイン
+          # Codex CLI 0.45+ は API キーは stdin から渡す必要がある
           printf '%s\n' "$OPENAI_API_KEY" | codex login --with-api-key
 
       - name: Generate patch with Codex
@@ -46,26 +53,19 @@ jobs:
           BRANCH="codex/issue-${{ github.event.issue.number }}"
           git switch -c "$BRANCH"
 
-          # クリーンな状態にしておく（Codex が余計なの読まないように）
-          if [ -d "node_modules" ]; then
-            rm -rf node_modules
-          fi
-          if [ -f "package-lock.json" ]; then
-            rm package-lock.json
-          fi
-
-          PROMPT="$(printf '%s\n\n%s\n%s\n' \
+          # Go プロジェクト前提のプロンプト
+          PROMPT="$(printf '%s\n\n%s\n\n%s\n' \
             "${ISSUE_TITLE}" \
             "${ISSUE_BODY}" \
-            "IMPORTANT: 最後に \`npm ci && npm run build\` を実行してエラーが出ないことを確認してください。IMPORTANT: .git のような '.' から始まるディレクトリやファイルは絶対に変更しないでください。")"
+            "あなたはこのGoプロジェクトの開発者です。上記のIssueを解決するためにコードを修正してください。修正後は必ず 'go test ./...' を実行し、テストがすべて成功する状態にしてください。もしテストが失敗した場合は原因を特定して修正し、再度 'go test ./...' を実行してグリーンにしてください。.git や .github など、ドットで始まるファイル・ディレクトリの中身は絶対に変更しないでください。")"
 
-          # CLI の Usage に従った形に修正
+          # 非対話モードで Codex に作業させる
           codex exec \
             --full-auto \
             --cd . \
             "${PROMPT}"
 
-          # Codex が変更を作った場合だけ commit & push
+          # Codex が何かしら変更を作った場合だけ commit & push
           if [[ -n "$(git status --porcelain)" ]]; then
             git add .
             git commit -m "Fix: #${{ github.event.issue.number }} - ${ISSUE_TITLE}"
@@ -80,7 +80,7 @@ jobs:
         run: |
           BRANCH="codex/issue-${{ github.event.issue.number }}"
 
-          # ブランチが origin に存在する場合だけ PR 作成
+          # origin にブランチがあるときだけ PR を作る
           if git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then
             gh pr create \
               --title "Fix: #${{ github.event.issue.number }} – ${{ github.event.issue.title }}" \
