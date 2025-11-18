@@ -5,6 +5,13 @@
 - Linux / ローカル環境
 - モノリポ1個（将来的に分割しても良い構成）
 
+## 進捗サマリー（2024-XX 更新）
+- ✅ ドメインモデル / MemoryStore / HTTP エンドポイントは v0.2 仕様で実装済み。
+- ✅ DAG 実行・PromptTemplate 適用・ProviderRegistry（OpenAI / Ollama / Image / LocalTool のスタブ）をエンジンに実装済み。
+- ✅ StreamingEvent の粒度拡張（`job_started`/`step_completed`/`item_completed` など）と `/health` の version / uptime 返却を実装。
+- ✅ Go SDK (`pkg/sdk/go`) で Create/Get/Cancel/Rerun/Stream API をサポート。単体テストを追加済み。
+- 🔄 次フェーズ: MemoryStore での StepCheckpoint 永続化、TypeScript/Python SDK の設計メモ、Provider 実 API 呼び出し実装。
+
 ## 0. ディレクトリ構成（最初のゴール）
 - `cmd/pipeline-engine/main.go`
 - `internal/engine/engine.go`
