@@ -1,0 +1,45 @@
+# @pipeline-engine/engine
+
+Electron / Node.js アプリから Pipeline Engine バイナリを起動・停止するための簡易ヘルパーです。`EngineProcess` は `binaryPath` を指定しない場合、同梱ディレクトリ `bin/` か `PIPELINE_ENGINE_BIN_PATH` 環境変数を参照してバイナリを探します。
+
+## バイナリ配置 / ダウンロード
+
+このパッケージ自体にはバイナリは含まれていません。以下いずれかの方法で配置してください。
+
+1. **環境変数でコピー**  
+   - `PIPELINE_ENGINE_ENGINE_SOURCE=/absolute/path/to/pipeline-engine` をセットした状態で `npm install` すると、postinstall が `pkg/engine/typescript/bin/` へコピーします。
+2. **URL からダウンロード**  
+   - `PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL=https://example.com/pipeline-engine-darwin-arm64` のように直接 URL を指定するか、`PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL_TEMPLATE=https://example.com/{{version}}/pipeline-engine-{{platform}}-{{arch}}` とテンプレートを設定してください（`{{version}}` は `PIPELINE_ENGINE_ENGINE_VERSION` が利用されます。既定は `latest`）。postinstall および `npm run engine:download` がダウンロードします。
+3. **手動で配置**  
+   - 任意の場所にバイナリを置き、`PIPELINE_ENGINE_BIN_PATH` を指すか、`EngineProcess` の `binaryPath` オプションに絶対パスを渡します。
+
+> `npm run engine:download` は `PIPELINE_ENGINE_ENGINE_SOURCE` / `PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL[_TEMPLATE]` が未設定の場合にエラーを返すため、CI などでバイナリ取得を強制したいときに利用してください。
+
+## 使い方
+
+```ts
+import { EngineProcess } from "@pipeline-engine/engine";
+import { PipelineEngineClient } from "@pipeline-engine/sdk";
+
+const engine = new EngineProcess({
+  env: {
+    PIPELINE_ENGINE_OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    PIPELINE_ENGINE_ADDR: "127.0.0.1:8085"
+  }
+});
+await engine.start();
+
+const client = new PipelineEngineClient({ baseUrl: "http://127.0.0.1:8085" });
+const { events } = await client.streamJobs({ pipeline_type: "openai.funmarkdown.v1", input: { sources: [] } });
+for await (const evt of events) {
+  console.log(evt);
+}
+
+await engine.stop();
+```
+
+`start()` は `/health` の応答を待ち合わせてから resolve します。`stop()` は `SIGTERM` でプロセスを終了させます。
+
+## 注意
+-	バイナリは含まれていないため、各プラットフォーム向けにビルドしたものを同梱するか、postinstall で取得してください。
+-	Electron で利用する場合はメインプロセスで `EngineProcess` を管理し、レンダラーからは IPC 経由で SDK を呼び出す構成が推奨です。

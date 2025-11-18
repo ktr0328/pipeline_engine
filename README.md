@@ -509,9 +509,33 @@ curl -s \
 
 - `upsertProviderProfile()` で OpenAI/Ollama の API キーやベース URL を実行時に差し替え可能です。
 
+エンジンバイナリをアプリ内で起動したい場合は `pkg/engine/typescript` にある `@pipeline-engine/engine` を利用して子プロセスとして `pipeline-engine` を spawn できます。
+
 ```
 npm install ./pkg/sdk/typescript
+npm install ./pkg/engine/typescript
 ```
+
+`@pipeline-engine/engine` の `postinstall` は、以下の環境変数が指定されている場合に自動でバイナリを `pkg/engine/typescript/bin/` へ配置します。
+
+| 変数 | 用途 |
+| ---- | ---- |
+| `PIPELINE_ENGINE_ENGINE_SOURCE` | 既存のバイナリをコピーする元パス |
+| `PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL` | プラットフォーム個別のダウンロード URL |
+| `PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL_TEMPLATE` | `{{platform}}`, `{{arch}}`, `{{version}}` を含む URL テンプレート |
+| `PIPELINE_ENGINE_ENGINE_VERSION` | テンプレート展開用バージョン（未指定時 `latest`） |
+| `PIPELINE_ENGINE_BIN_PATH` | `EngineProcess` が利用するバイナリの明示的な絶対パス |
+
+例:
+
+```bash
+PIPELINE_ENGINE_ENGINE_SOURCE=../dist/pipeline-engine npm install ./pkg/engine/typescript
+# もしくは
+PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL_TEMPLATE=\"https://example.com/{{version}}/pipeline-engine-{{platform}}-{{arch}}\" \\
+PIPELINE_ENGINE_ENGINE_VERSION=v0.2.0 npm install ./pkg/engine/typescript
+```
+
+`npm run engine:download` を実行すると、設定済みの Source / URL を必須としてバイナリ取得を強制できます。Electron 側ではメインプロセスで `EngineProcess` を起動し、レンダラーは `@pipeline-engine/sdk` を経由して API を叩く構成が推奨です。
 
 詳細は [pkg/sdk/typescript/README.md](pkg/sdk/typescript/README.md) を参照してください。
 

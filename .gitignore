@@ -1,5 +1,8 @@
 # Go build artifacts
 bin/
+!pkg/engine/typescript/bin/
+pkg/engine/typescript/bin/**
+!pkg/engine/typescript/bin/.gitkeep
 *.exe
 *.exe~
 *.dll
@@ -23,3 +26,4 @@ coverage/
 # Temporary files
 tmp/
 *.log
+node_modules/
