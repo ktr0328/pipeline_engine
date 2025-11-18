@@ -7,7 +7,7 @@ on:
 jobs:
   fix_with_codex:
     runs-on: ubuntu-latest
-    if: github.event.label.name == 'codex' # 'codex'ラベルがついた時のみ実行
+    if: github.event.label.name == 'codex'
 
     permissions:
       contents: write
@@ -44,9 +44,13 @@ jobs:
             rm package-lock.json
           fi
 
-          PROMPT="$(printf '%s\\n\\n%s\\n%s\\n' "${{ github.event.issue.title }}" "${{ github.event.issue.body }}" "最後に\`npm ci && npm run build\`を実行してエラーが出ないことを確認してください。 .gitのような'.'から始まるファイル、フォルダの中身は絶対に変更しないでください。")"
+          PROMPT="$(printf '%s\n\n%s\n%s\n' \
+            "${{ github.event.issue.title }}" \
+            "${{ github.event.issue.body }}" \
+            "最後に\`npm ci && npm run build\`を実行してエラーが出ないことを確認してください。.gitのような'.'から始まるファイル、フォルダの中身は絶対に変更しないでください。")"
 
-          codex -a full-auto "$PROMPT"
+          # ★ここを修正： -a full-auto → --full-auto
+          codex --full-auto --quiet "$PROMPT"
 
           if [[ -n $(git status --porcelain) ]]; then
             git add .
