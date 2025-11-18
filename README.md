@@ -7,11 +7,11 @@
 - `internal/store/memory_test.go`: MemoryStore の Create / Update / Get / List とディープコピー動作を確認します。
 - `internal/server/handlers_test.go`: HTTP ハンドラがヘルスチェックや `/v1/jobs`, `/v1/jobs/{id}/cancel` などで正しいレスポンスを返すかを確認します。
 
-テストは以下のコマンドで実行できます。
+テストは `make test` で Go / TypeScript のすべてをまとめて実行できます。
 
 ```bash
 # ルートディレクトリで実行
-go test ./...
+make test
 ```
 
 ## 主な特徴
@@ -536,6 +536,8 @@ PIPELINE_ENGINE_ENGINE_VERSION=v0.2.0 npm install ./pkg/engine/typescript
 ```
 
 `npm run engine:download` を実行すると、設定済みの Source / URL を必須としてバイナリ取得を強制できます。Electron 側ではメインプロセスで `EngineProcess` を起動し、レンダラーは `@pipeline-engine/sdk` を経由して API を叩く構成が推奨です。
+
+両パッケージとも Node 標準のテストランナーで動作するユニットテストを含んでいます（`cd pkg/sdk/typescript && npm test` など）。
 
 詳細は [pkg/sdk/typescript/README.md](pkg/sdk/typescript/README.md) を参照してください。
 

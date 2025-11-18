@@ -39,6 +39,7 @@
 - [x] curl 以外の利用者向けに TypeScript / Python SDK 設計メモを追加。
 - [x] TypeScript SDK の最小実装を `pkg/sdk/typescript` に追加（Electron からのストリーミング chunk 対応）。
 - [x] Node/Electron でエンジンバイナリを同梱・起動できる `@pipeline-engine/engine` パッケージを追加。
+- [x] TypeScript SDK / Engine パッケージ向けのユニット & 統合テストを整備。
 
 ### テスト / DevEx
 - [x] Engine / store / HTTP ハンドラ向けのユニットテストを整備し、`go test ./...` で基本的な動作確認が可能。
