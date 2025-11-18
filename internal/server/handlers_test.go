@@ -20,23 +20,16 @@ import (
 func TestHandlerHealth(t *testing.T) {
 	t.Parallel()
 
-	mux := http.NewServeMux()
-	handler := server.NewHandler(&stubEngine{}, time.Unix(0, 0), "test-version")
-	handler.Register(mux)
+	mux := newTestMux(&stubEngine{})
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	resp := httptest.NewRecorder()
 	mux.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("/health のステータスコードが不正です: %d", resp.Code)
-	}
+	assertStatus(t, resp.Code, http.StatusOK)
 
 	var payload map[string]interface{}
-	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("レスポンスの JSON 解析に失敗しました: %v", err)
-	}
-
+	decodeJSON(t, resp.Body.Bytes(), &payload)
 	if payload["status"] != "ok" {
 		t.Fatalf("/health の status が想定外です: %+v", payload)
 	}
@@ -60,10 +53,7 @@ func TestHandlerCreateJob(t *testing.T) {
 			return job, nil
 		},
 	}
-
-	mux := http.NewServeMux()
-	handler := server.NewHandler(stub, time.Unix(0, 0), "test-version")
-	handler.Register(mux)
+	mux := newTestMux(stub)
 
 	body := bytes.NewBufferString(`{"pipeline_type":"demo","input":{"sources":[]}}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/jobs", body)
@@ -72,9 +62,7 @@ func TestHandlerCreateJob(t *testing.T) {
 	resp := httptest.NewRecorder()
 	mux.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusAccepted {
-		t.Fatalf("/v1/jobs のステータスコードが不正です: %d", resp.Code)
-	}
+	assertStatus(t, resp.Code, http.StatusAccepted)
 
 	if received.PipelineType != engine.PipelineType("demo") {
 		t.Fatalf("Handler が受け取った pipeline_type が不正です: %s", received.PipelineType)
@@ -83,9 +71,7 @@ func TestHandlerCreateJob(t *testing.T) {
 	var payload struct {
 		Job *engine.Job `json:"job"`
 	}
-	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("レスポンスの JSON 解析に失敗しました: %v", err)
-	}
+	decodeJSON(t, resp.Body.Bytes(), &payload)
 
 	if payload.Job == nil || payload.Job.ID != "job-123" {
 		t.Fatalf("レスポンスの job 情報が不正です: %+v", payload.Job)
@@ -108,9 +94,7 @@ func TestHandlerCreateJobStream(t *testing.T) {
 		},
 	}
 
-	mux := http.NewServeMux()
-	handler := server.NewHandler(stub, time.Unix(0, 0), "test-version")
-	handler.Register(mux)
+	mux := newTestMux(stub)
 
 	body := bytes.NewBufferString(`{"pipeline_type":"demo","input":{"sources":[]}}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/jobs?stream=true", body)
@@ -169,9 +153,7 @@ func TestHandlerCancelJob(t *testing.T) {
 		},
 	}
 
-	mux := http.NewServeMux()
-	handler := server.NewHandler(stub, time.Unix(0, 0), "test-version")
-	handler.Register(mux)
+	mux := newTestMux(stub)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/jobs/job-55/cancel", strings.NewReader(`{"reason":"user aborted"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -208,9 +190,7 @@ func TestHandlerGetJobNotFound(t *testing.T) {
 		},
 	}
 
-	mux := http.NewServeMux()
-	handler := server.NewHandler(stub, time.Unix(0, 0), "test-version")
-	handler.Register(mux)
+	mux := newTestMux(stub)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/jobs/unknown", nil)
 	resp := httptest.NewRecorder()
@@ -259,9 +239,7 @@ func TestHandlerRerunJob(t *testing.T) {
 		},
 	}
 
-	mux := http.NewServeMux()
-	handler := server.NewHandler(stub, time.Unix(0, 0), "test-version")
-	handler.Register(mux)
+	mux := newTestMux(stub)
 
 	payload := `{
 		"from_step_id": "step-2",
@@ -352,5 +330,26 @@ func minimalJob(id string) *engine.Job {
 		Input: engine.JobInput{
 			Sources: []engine.Source{{Kind: engine.SourceKindNote, Label: "memo", Content: "test"}},
 		},
+	}
+}
+
+func newTestMux(e engine.Engine) *http.ServeMux {
+	mux := http.NewServeMux()
+	handler := server.NewHandler(e, time.Unix(0, 0), "test-version")
+	handler.Register(mux)
+	return mux
+}
+
+func assertStatus(t *testing.T, got, want int) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("HTTP ステータスが想定外です: got=%d want=%d", got, want)
+	}
+}
+
+func decodeJSON(t *testing.T, data []byte, v interface{}) {
+	t.Helper()
+	if err := json.Unmarshal(data, v); err != nil {
+		t.Fatalf("JSON 解析に失敗しました: %v", err)
 	}
 }
