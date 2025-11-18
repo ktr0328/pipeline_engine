@@ -1,0 +1,8 @@
+package engine
+
+const (
+	OpenAIAPIKeyEnvVar  = "PIPELINE_ENGINE_OPENAI_API_KEY"
+	OllamaBaseURLEnvVar = "PIPELINE_ENGINE_OLLAMA_BASE_URL"
+	OllamaModelEnvVar   = "PIPELINE_ENGINE_OLLAMA_MODEL"
+	OllamaEnableEnvVar  = "PIPELINE_ENGINE_ENABLE_OLLAMA"
+)

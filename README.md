@@ -39,6 +39,7 @@ pkg/                 # 共有ライブラリを追加予定の空ディレクト
 - OpenAI の場合、`ProviderProfile.APIKey` に直接埋め込むか、環境変数 `PIPELINE_ENGINE_OPENAI_API_KEY` にセットしておくと自動で参照します。`PIPELINE_ENGINE_OPENAI_BASE_URL` / `PIPELINE_ENGINE_OPENAI_MODEL` を指定するとエンドポイントやモデルも切り替えられます。
 - `BaseURI` は既定で `https://api.openai.com/v1` ですが、ローカルプロキシやモックサーバーに向けたい場合は上書きできます。
 - ローカルの Ollama を利用する場合は `PIPELINE_ENGINE_ENABLE_OLLAMA=1` もしくは `PIPELINE_ENGINE_OLLAMA_BASE_URL` を設定します（既定は `http://127.0.0.1:11434`）。モデルは `PIPELINE_ENGINE_OLLAMA_MODEL` で変更できます。
+- ログの出力レベルは `PIPELINE_ENGINE_LOG_LEVEL`（`debug`/`info`/`warn`/`error`）で切り替えられます。未指定時は `info`。
 
 ```go
 cfg := &engine.EngineConfig{
