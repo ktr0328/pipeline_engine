@@ -1,9 +1,11 @@
 package gosdk
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -161,4 +163,94 @@ func decodeJob(body io.Reader) (*engine.Job, error) {
 		return nil, err
 	}
 	return &resp.Job, nil
+}
+
+// StreamJobs starts a streaming job by sending `POST /v1/jobs?stream=true` and
+// returns a channel of StreamingEvent plus the accepted Job.
+func (c *Client) StreamJobs(ctx context.Context, req engine.JobRequest) (<-chan engine.StreamingEvent, *engine.Job, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	url := c.BaseURL + "/v1/jobs?stream=true"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient().Do(httpReq)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	jobLine, eventsCh, closeFn, err := readNDJSONStream(resp)
+	if err != nil {
+		resp.Body.Close()
+		return nil, nil, err
+	}
+	var jobEvent engine.StreamingEvent
+	if err := json.Unmarshal(jobLine, &jobEvent); err != nil {
+		closeFn()
+		return nil, nil, err
+	}
+	job, ok := jobEvent.Data.(map[string]interface{})
+	if !ok {
+		closeFn()
+		return nil, nil, errors.New("invalid job_queued payload")
+	}
+	jobBytes, err := json.Marshal(job)
+	if err != nil {
+		closeFn()
+		return nil, nil, err
+	}
+	var jobStruct engine.Job
+	if err := json.Unmarshal(jobBytes, &jobStruct); err != nil {
+		closeFn()
+		return nil, nil, err
+	}
+	return eventsCh, &jobStruct, nil
+}
+
+func readNDJSONStream(resp *http.Response) ([]byte, chan engine.StreamingEvent, func(), error) {
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		return nil, nil, nil, fmt.Errorf("http error: %s", resp.Status)
+	}
+	reader := bufio.NewReader(resp.Body)
+	firstLine, err := reader.ReadBytes('\n')
+	if err != nil {
+		resp.Body.Close()
+		return nil, nil, nil, err
+	}
+
+	ch := make(chan engine.StreamingEvent)
+	go func() {
+		defer resp.Body.Close()
+		defer close(ch)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if len(strings.TrimSpace(string(line))) == 0 && err == io.EOF {
+				return
+			}
+			if len(line) == 0 {
+				if err != nil {
+					return
+				}
+				continue
+			}
+			var evt engine.StreamingEvent
+			if jsonErr := json.Unmarshal(line, &evt); jsonErr != nil {
+				return
+			}
+			ch <- evt
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return bytes.TrimSpace(firstLine), ch, func() {
+		resp.Body.Close()
+	}, nil
 }

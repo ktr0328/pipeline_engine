@@ -33,7 +33,7 @@
 - [x] API エラー形式 `{ error: { code, message, details } }` を全エンドポイントで統一。
 
 ### SDK / クライアント
-- [ ] `pkg/sdk/go/client.go` に HTTP クライアント（CreateJob / GetJob / Stream / Cancel / Rerun）を実装。
+- [x] `pkg/sdk/go/client.go` に HTTP クライアント（CreateJob / GetJob / Stream / Cancel / Rerun）を実装。
 - [ ] curl 以外の利用者向けに TypeScript / Python SDK 設計メモを追加。
 
 ### テスト / DevEx
