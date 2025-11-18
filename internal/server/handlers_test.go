@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -91,6 +92,61 @@ func TestHandlerCreateJob(t *testing.T) {
 	}
 }
 
+func TestHandlerCreateJobStream(t *testing.T) {
+	t.Parallel()
+
+	evCh := make(chan engine.StreamingEvent, 2)
+	evCh <- engine.StreamingEvent{Event: "job_status", JobID: "job-stream", Data: minimalJob("job-stream")}
+	evCh <- engine.StreamingEvent{Event: "job_completed", JobID: "job-stream", Data: minimalJob("job-stream")}
+	close(evCh)
+
+	stub := &stubEngine{
+		runJobStreamFunc: func(ctx context.Context, req engine.JobRequest) (<-chan engine.StreamingEvent, *engine.Job, error) {
+			job := minimalJob("job-stream")
+			job.Status = engine.JobStatusQueued
+			return evCh, job, nil
+		},
+	}
+
+	mux := http.NewServeMux()
+	handler := server.NewHandler(stub, time.Unix(0, 0), "test-version")
+	handler.Register(mux)
+
+	body := bytes.NewBufferString(`{"pipeline_type":"demo","input":{"sources":[]}}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/jobs?stream=true", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("stream=true の /v1/jobs のステータスコードが不正です: %d", resp.Code)
+	}
+
+	var events []engine.StreamingEvent
+	dec := json.NewDecoder(resp.Body)
+	for {
+		var evt engine.StreamingEvent
+		if err := dec.Decode(&evt); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			t.Fatalf("NDJSON の解析に失敗しました: %v", err)
+		}
+		events = append(events, evt)
+	}
+
+	if len(events) != 3 {
+		t.Fatalf("受信したイベント数が想定外です: %+v", events)
+	}
+	if events[0].Event != "job_queued" {
+		t.Fatalf("最初のイベントが job_queued ではありません: %+v", events[0])
+	}
+	if events[1].Event != "job_status" || events[2].Event != "job_completed" {
+		t.Fatalf("ストリーミングイベントが期待と異なります: %+v", events)
+	}
+}
+
 func TestHandlerCancelJob(t *testing.T) {
 	t.Parallel()
 
@@ -174,6 +230,79 @@ func TestHandlerGetJobNotFound(t *testing.T) {
 	}
 	if payload.Error.Code != "not_found" {
 		t.Fatalf("エラーコードが not_found ではありません: %+v", payload)
+	}
+}
+
+func TestHandlerRerunJob(t *testing.T) {
+	t.Parallel()
+
+	baseJob := minimalJob("job-base")
+	baseJob.PipelineType = engine.PipelineType("log_summary")
+	baseJob.Input = engine.JobInput{
+		Sources: []engine.Source{{Kind: engine.SourceKindLog, Label: "log", Content: "line"}},
+	}
+
+	var captured engine.JobRequest
+	stub := &stubEngine{
+		getJobFunc: func(ctx context.Context, jobID string) (*engine.Job, error) {
+			if jobID != "job-base" {
+				t.Fatalf("想定外の jobID 取得: %s", jobID)
+			}
+			return baseJob, nil
+		},
+		runJobFunc: func(ctx context.Context, req engine.JobRequest) (*engine.Job, error) {
+			captured = req
+			resp := minimalJob("job-rerun")
+			resp.ParentJobID = req.ParentJobID
+			resp.Mode = req.Mode
+			return resp, nil
+		},
+	}
+
+	mux := http.NewServeMux()
+	handler := server.NewHandler(stub, time.Unix(0, 0), "test-version")
+	handler.Register(mux)
+
+	payload := `{
+		"from_step_id": "step-2",
+		"reuse_upstream": true,
+		"override_input": {
+			"sources": [{"kind":"note","label":"memo","content":"override"}]
+		}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/jobs/job-base/rerun", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("rerun のステータスコードが不正です: %d", resp.Code)
+	}
+	if captured.Mode != "rerun" {
+		t.Fatalf("RunJob に渡した mode が rerun ではありません: %+v", captured)
+	}
+	if captured.ParentJobID == nil || *captured.ParentJobID != "job-base" {
+		t.Fatalf("ParentJobID が設定されていません: %+v", captured.ParentJobID)
+	}
+	if captured.FromStepID == nil || *captured.FromStepID != engine.StepID("step-2") {
+		t.Fatalf("FromStepID が設定されていません: %+v", captured.FromStepID)
+	}
+	if len(captured.Input.Sources) != 1 || captured.Input.Sources[0].Label != "memo" {
+		t.Fatalf("override_input が反映されていません: %+v", captured.Input)
+	}
+	if !captured.ReuseUpstream {
+		t.Fatalf("ReuseUpstream が true になっていません: %+v", captured)
+	}
+
+	var payloadResp struct {
+		Job *engine.Job `json:"job"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &payloadResp); err != nil {
+		t.Fatalf("レスポンスの JSON 解析に失敗しました: %v", err)
+	}
+	if payloadResp.Job == nil || payloadResp.Job.ID != "job-rerun" {
+		t.Fatalf("rerun レスポンスのジョブが想定外です: %+v", payloadResp.Job)
 	}
 }
 
