@@ -8,7 +8,7 @@ Node.js / Electron アプリから Pipeline Engine の HTTP API を扱うため�
 ## インストール
 
 ```
-npm install @pipeline-engine/sdk
+npm install @pipeforge/sdk
 ```
 
 ※この SDK は Node.js 18 以降（組み込みの `fetch` / WHATWG Streams 利用）を前提にしています。Electron ではメインプロセスで利用するか、レンダラから `fetch` を注入してください。
@@ -16,7 +16,7 @@ npm install @pipeline-engine/sdk
 ## 使い方
 
 ```ts
-import { PipelineEngineClient, JobRequest } from "@pipeline-engine/sdk";
+import { PipelineEngineClient, JobRequest } from "@pipeforge/sdk";
 
 const client = new PipelineEngineClient({ baseUrl: "http://127.0.0.1:8085" });
 

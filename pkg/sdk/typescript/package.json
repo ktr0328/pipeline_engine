@@ -1,5 +1,5 @@
 {
-  "name": "@pipeline-engine/sdk",
+  "name": "@pipeforge/sdk",
   "version": "0.1.0",
   "description": "TypeScript client SDK for Pipeline Engine",
   "type": "module",

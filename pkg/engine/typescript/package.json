@@ -1,5 +1,5 @@
 {
-  "name": "@pipeline-engine/engine",
+  "name": "@pipeforge/engine",
   "version": "0.1.0",
   "description": "Helper to run the Pipeline Engine binary from Node/Electron",
   "type": "module",

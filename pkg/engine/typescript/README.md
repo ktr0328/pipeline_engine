@@ -1,4 +1,4 @@
-# @pipeline-engine/engine
+# @pipeforge/engine
 
 Electron / Node.js アプリから Pipeline Engine バイナリを起動・停止するための簡易ヘルパーです。`EngineProcess` は `binaryPath` を指定しない場合、同梱ディレクトリ `bin/` か `PIPELINE_ENGINE_BIN_PATH` 環境変数を参照してバイナリを探します。
 
@@ -18,8 +18,8 @@ Electron / Node.js アプリから Pipeline Engine バイナリを起動・停�
 ## 使い方
 
 ```ts
-import { EngineProcess } from "@pipeline-engine/engine";
-import { PipelineEngineClient } from "@pipeline-engine/sdk";
+import { EngineProcess } from "@pipeforge/engine";
+import { PipelineEngineClient } from "@pipeforge/sdk";
 
 const engine = new EngineProcess({
   env: {

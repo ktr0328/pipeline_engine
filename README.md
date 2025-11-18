@@ -509,14 +509,14 @@ curl -s \
 
 - `upsertProviderProfile()` で OpenAI/Ollama の API キーやベース URL を実行時に差し替え可能です。
 
-エンジンバイナリをアプリ内で起動したい場合は `pkg/engine/typescript` にある `@pipeline-engine/engine` を利用して子プロセスとして `pipeline-engine` を spawn できます。
+エンジンバイナリをアプリ内で起動したい場合は `pkg/engine/typescript` にある `@pipeforge/engine` を利用して子プロセスとして `pipeline-engine` を spawn できます。
 
 ```
 npm install ./pkg/sdk/typescript
 npm install ./pkg/engine/typescript
 ```
 
-`@pipeline-engine/engine` の `postinstall` は GitHub Releases (`v<package version>` タグ) から `pipeline-engine-<platform>-<arch>` バイナリを自動取得し、`pkg/engine/typescript/bin/` に配置します。開発版などリリースが存在しない場合やカスタムビルドを使いたい場合は以下の環境変数で挙動を上書きできます。
+`@pipeforge/engine` の `postinstall` は GitHub Releases (`v<package version>` タグ) から `pipeline-engine-<platform>-<arch>` バイナリを自動取得し、`pkg/engine/typescript/bin/` に配置します。開発版などリリースが存在しない場合やカスタムビルドを使いたい場合は以下の環境変数で挙動を上書きできます。
 
 | 変数 | 用途 |
 | ---- | ---- |
@@ -535,15 +535,18 @@ PIPELINE_ENGINE_ENGINE_DOWNLOAD_URL_TEMPLATE=\"https://example.com/{{version}}/p
 PIPELINE_ENGINE_ENGINE_VERSION=v0.2.0 npm install ./pkg/engine/typescript
 ```
 
-`npm run engine:download` を実行すると、上記 Source / URL を必須としてバイナリ取得を強制できます。Electron 側ではメインプロセスで `EngineProcess` を起動し、レンダラーは `@pipeline-engine/sdk` を経由して API を叩く構成が推奨です。
+`npm run engine:download` を実行すると、上記 Source / URL を必須としてバイナリ取得を強制できます。Electron 側ではメインプロセスで `EngineProcess` を起動し、レンダラーは `@pipeforge/sdk` を経由して API を叩く構成が推奨です。
 
 両パッケージとも Node 標準のテストランナーで動作するユニットテストを含んでいます（`cd pkg/sdk/typescript && npm test` など）。
+
+- `npm install @pipeforge/sdk`
+- `npm install @pipeforge/engine`
 
 詳細は [pkg/sdk/typescript/README.md](pkg/sdk/typescript/README.md) を参照してください。
 
 ## CI / リリース
 - `.github/workflows/ci.yml`: push / PR / 手動トリガーで `make test` を実行し、Go と TypeScript の両方を検証します。
-- `.github/workflows/release.yml`: `v*` タグの push で Linux / macOS / Windows 向けバイナリをクロスビルドし、GitHub Releases にアップロードします。`@pipeline-engine/engine` の `postinstall` はこれらのアセット URL を既定で参照します。
+- `.github/workflows/release.yml`: `v*` タグの push で Linux / macOS / Windows 向けバイナリをクロスビルドし、GitHub Releases にアップロードします。`@pipeforge/engine` の `postinstall` はこれらのアセット URL を既定で参照します。
 
 ## ライセンス
 本リポジトリは [Apache License 2.0](LICENSE) の下で提供されています。
