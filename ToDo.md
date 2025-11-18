@@ -17,7 +17,7 @@
 
 ### Provider 層
 - [x] ProviderRegistry に OpenAI / Ollama / Image / LocalTool プロバイダを登録・切替できる設定レイヤを実装。
-- [ ] OllamaProvider / OpenAIProvider で実 API 呼び出しを実装し、リトライ・タイムアウト・エラーハンドリングを付与。
+- [ ] OllamaProvider の実 API 連携（OpenAIProvider は完了済み。キーは `PIPELINE_ENGINE_OPENAI_API_KEY` 経由で読み込み可能）。
 - [x] Step ごとの `ProviderOverride` を ProviderProfile にマージする解決順序（ImplementationPlan §1）を実装。
 - [x] 画像/ローカルツール StepKind 用のインターフェースとダミー（もしくは CLI 呼び出し）実装を追加。
 

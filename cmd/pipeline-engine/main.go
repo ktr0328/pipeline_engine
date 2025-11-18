@@ -24,6 +24,7 @@ func main() {
 	jobStore := store.NewMemoryStore()
 	eng := engine.NewBasicEngine(jobStore)
 	srv := server.NewServer(eng)
+	logEnvStatus()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -41,5 +42,21 @@ func main() {
 	log.Printf("pipeline engine listening on %s\n", addr)
 	if err := srv.ListenAndServe(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("server exited: %v", err)
+	}
+}
+
+func logEnvStatus() {
+	status := []struct {
+		label string
+		key   string
+	}{
+		{label: "OpenAI", key: engine.OpenAIAPIKeyEnvVar},
+	}
+	for _, item := range status {
+		if os.Getenv(item.key) != "" {
+			log.Printf("%s API key detected via %s", item.label, item.key)
+		} else {
+			log.Printf("%s API key not set (%s empty)", item.label, item.key)
+		}
 	}
 }

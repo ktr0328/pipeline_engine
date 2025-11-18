@@ -9,7 +9,7 @@ bin/
 *.out
 
 # Build outputs
-pipeline-engine
+/pipeline-engine
 dist/
 coverage/
 

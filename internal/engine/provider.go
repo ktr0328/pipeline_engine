@@ -222,7 +222,7 @@ func simulateLLMCall(ctx context.Context, vendor string, profile ProviderProfile
 	return ProviderResponse{Output: text, Metadata: meta}, nil
 }
 
-const openAIKeyEnv = "PIPELINE_ENGINE_OPENAI_API_KEY"
+const OpenAIAPIKeyEnvVar = "PIPELINE_ENGINE_OPENAI_API_KEY"
 
 type openAIRequest struct {
 	Model       string          `json:"model"`
@@ -250,7 +250,7 @@ func callOpenAI(ctx context.Context, req ProviderRequest, profile ProviderProfil
 	}
 	apiKey := profile.APIKey
 	if apiKey == "" {
-		apiKey = os.Getenv(openAIKeyEnv)
+		apiKey = os.Getenv(OpenAIAPIKeyEnvVar)
 	}
 	if apiKey == "" {
 		return ProviderResponse{}, errors.New("openai api key is not configured")
