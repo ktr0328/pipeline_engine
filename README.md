@@ -1,11 +1,11 @@
 # Pipeline Engine
 
-
-このリポジトリは、LLM などの処理を段階的に実行するパイプラインエンジンの試作実装です。BasicEngine と HTTP サーバー、SDK などが含まれており、最小構成でジョブの受付から完了までを再現できます。
+ローカルマシン上で常駐／組み込みのどちらでも扱える AI パイプライン実行エンジンです。ログ・コード・ノートなど複数種類の入力を受け取り、OpenAI や Ollama などの Provider ノードを直列 / 並列に組み合わせたパイプラインを実行し、結果をストリーミングしながら返します。初期バージョンではシングルノード実装に絞り、DAG オーケストレーションや Provider 連携を段階的に拡張していきます。
 
 ## テスト
-
-サンプルパイプラインの疎通を確認する自動テストを `internal/engine/engine_test.go` に追加しました。BasicEngine と MemoryStore を組み合わせ、ジョブのライフサイクルが `queued` から `succeeded` まで正しく遷移し、結果にテキストレスポンスが含まれるかどうかを検証します。
+- `internal/engine/engine_test.go`: BasicEngine と MemoryStore の疎通、キャンセル、ストリーミングイベントを検証します。
+- `internal/store/memory_test.go`: MemoryStore の Create / Update / Get / List とディープコピー動作を確認します。
+- `internal/server/handlers_test.go`: HTTP ハンドラがヘルスチェックや `/v1/jobs`, `/v1/jobs/{id}/cancel` などで正しいレスポンスを返すかを確認します。
 
 テストは以下のコマンドで実行できます。
 
@@ -13,10 +13,6 @@
 # ルートディレクトリで実行
 go test ./...
 ```
-
-テストが成功すると、サンプルパイプラインの基本的な挙動が維持されていることを確認できます。
-=======
-ローカルマシン上で常駐／組み込みのどちらでも扱える AI パイプライン実行エンジンです。ログ・コード・ノートなど複数種類の入力を受け取り、OpenAI や Ollama などの Provider ノードを直列 / 並列に組み合わせたパイプラインを実行し、結果をストリーミングしながら返します。初期バージョンではシングルノード実装に絞り、DAG オーケストレーションや Provider 連携を段階的に拡張していきます。
 
 ## 主な特徴
 - Go 製の軽量エンジン (`internal/engine`) と HTTP サーバー (`internal/server`) を同一バイナリで提供。
@@ -131,4 +127,3 @@ curl -X POST -H "Content-Type: application/json" \
 
 ## ライセンス
 本リポジトリは [Apache License 2.0](LICENSE) の下で提供されています。
-

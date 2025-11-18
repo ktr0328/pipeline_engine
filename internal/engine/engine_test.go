@@ -15,24 +15,8 @@ func TestBasicEngine_RunJobWithSamplePipeline(t *testing.T) {
 	memoryStore := store.NewMemoryStore()
 	eng := engine.NewBasicEngine(memoryStore)
 
-	req := engine.JobRequest{
-		PipelineType: engine.PipelineType("sample_pipeline"),
-		Input: engine.JobInput{
-			Sources: []engine.Source{
-				{
-					Kind:    engine.SourceKindNote,
-					Label:   "仕様メモ",
-					Content: "このサンプルはパイプラインの疎通確認用です。",
-				},
-			},
-			Options: &engine.JobOptions{
-				Language: "ja",
-			},
-		},
-	}
-
 	ctx := context.Background()
-	job, err := eng.RunJob(ctx, req)
+	job, err := eng.RunJob(ctx, sampleJobRequest())
 	if err != nil {
 		t.Fatalf("ジョブの起動に失敗しました: %v", err)
 	}
@@ -74,6 +58,89 @@ func TestBasicEngine_RunJobWithSamplePipeline(t *testing.T) {
 	}
 }
 
+func TestBasicEngine_CancelJobStopsExecution(t *testing.T) {
+	t.Parallel()
+
+	memoryStore := store.NewMemoryStore()
+	eng := engine.NewBasicEngine(memoryStore)
+
+	ctx := context.Background()
+	job, err := eng.RunJob(ctx, sampleJobRequest())
+	if err != nil {
+		t.Fatalf("ジョブの起動に失敗しました: %v", err)
+	}
+
+	_ = waitForJobStatus(t, memoryStore, job.ID, engine.JobStatusRunning, 2*time.Second)
+
+	if err := eng.CancelJob(ctx, job.ID, "test cancel"); err != nil {
+		t.Fatalf("ジョブのキャンセルに失敗しました: %v", err)
+	}
+
+	finalJob := waitForJobStatus(t, memoryStore, job.ID, engine.JobStatusCancelled, 3*time.Second)
+	if finalJob.Error == nil || finalJob.Error.Code != "cancelled" {
+		t.Fatalf("キャンセル後のエラー情報が不正です: %+v", finalJob.Error)
+	}
+
+	for _, step := range finalJob.StepExecutions {
+		if step.Status != engine.StepExecCancelled {
+			t.Fatalf("ステップ %s が cancelled ではありません: %s", step.StepID, step.Status)
+		}
+	}
+}
+
+func TestBasicEngine_RunJobStreamEmitsStatusTransitions(t *testing.T) {
+	t.Parallel()
+
+	memoryStore := store.NewMemoryStore()
+	eng := engine.NewBasicEngine(memoryStore)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events, job, err := eng.RunJobStream(ctx, sampleJobRequest())
+	if err != nil {
+		t.Fatalf("ジョブストリームの起動に失敗しました: %v", err)
+	}
+	if job == nil {
+		t.Fatal("RunJobStream から返却されたジョブが nil です")
+	}
+
+	statuses := make([]engine.JobStatus, 0, 3)
+	timeout := time.After(3 * time.Second)
+
+collectLoop:
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("ストリーミングイベントの待機がタイムアウトしました")
+		case ev, ok := <-events:
+			if !ok {
+				break collectLoop
+			}
+			if ev.Event != "job_status" {
+				continue
+			}
+			jobData, ok := ev.Data.(*engine.Job)
+			if !ok {
+				t.Fatalf("event data が *engine.Job ではありません: %T", ev.Data)
+			}
+			statuses = append(statuses, jobData.Status)
+			if jobData.Status == engine.JobStatusSucceeded {
+				break collectLoop
+			}
+		}
+	}
+
+	if len(statuses) == 0 {
+		t.Fatal("job_status イベントが受信できませんでした")
+	}
+
+	last := statuses[len(statuses)-1]
+	if last != engine.JobStatusSucceeded {
+		t.Fatalf("最終ステータスが succeeded ではありません: %s (取得済み: %v)", last, statuses)
+	}
+}
+
 func waitForJobStatus(t *testing.T, jobStore engine.JobStore, jobID string, expected engine.JobStatus, timeout time.Duration) *engine.Job {
 	t.Helper()
 
@@ -97,4 +164,22 @@ func waitForJobStatus(t *testing.T, jobStore engine.JobStore, jobID string, expe
 
 	t.Fatalf("ジョブ %s が制限時間内に %s になりませんでした", jobID, expected)
 	return nil
+}
+
+func sampleJobRequest() engine.JobRequest {
+	return engine.JobRequest{
+		PipelineType: engine.PipelineType("sample_pipeline"),
+		Input: engine.JobInput{
+			Sources: []engine.Source{
+				{
+					Kind:    engine.SourceKindNote,
+					Label:   "仕様メモ",
+					Content: "このサンプルはパイプラインの疎通確認用です。",
+				},
+			},
+			Options: &engine.JobOptions{
+				Language: "ja",
+			},
+		},
+	}
 }
