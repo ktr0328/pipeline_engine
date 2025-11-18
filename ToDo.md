@@ -37,7 +37,7 @@
 - [x] curl 以外の利用者向けに TypeScript / Python SDK 設計メモを追加。
 
 ### テスト / DevEx
-- [ ] Engine / store / HTTP ハンドラ向けのユニットテストと簡易統合テスト（`go test ./...`）を整備。
+- [x] Engine / store / HTTP ハンドラ向けのユニットテストを整備し、`go test ./...` で基本的な動作確認が可能。
 - [x] `make dev` などのタスクランナー（lint, test, run）を準備。
 
 ## 🗺️ ミドルターム (README ロードマップ参照)
