@@ -21,4 +21,28 @@
 - `StepChunk`: StepExecution に随時蓄積される chunk。`index` は 0 始まり。
 - `ResultItem`: `kind`, `content_type`, `data`（`text`, `prompt`, `pipelineType` 等）を含む。
 
-ストリームは `stream_finished` でクローズを明示するため、クライアントはこのイベントを受信して処理を終了してください。
+### JSON Schema（抜粋）
+
+```json
+{
+  "type": "object",
+  "required": ["event", "job_id", "data"],
+  "properties": {
+    "event": {"type": "string"},
+    "job_id": {"type": "string"},
+    "data": {}
+  }
+}
+```
+
+`provider_chunk` 例:
+
+```json
+{
+  "event": "provider_chunk",
+  "job_id": "job-123",
+  "data": {"step_id": "markdown", "index": 1, "content": "続き…"}
+}
+```
+
+ストリームは `stream_finished` でクローズを明示するため、クライアントはこのイベントを受信して処理を終了してください。失敗 (`job_failed`) やキャンセル (`job_cancelled`) の場合も `stream_finished` が送られます。

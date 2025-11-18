@@ -391,6 +391,29 @@ curl -N -H "Content-Type: application/json" \
 
 このように 1 つのリクエストで生成→整形のパイプラインを構築でき、ストリーミングで各段階の応答をフロントエンドへ即時配信できます。
 
+### Go SDK で chunk を処理する例
+
+```go
+client := gosdk.NewClient("http://127.0.0.1:8085")
+events, job, err := client.StreamJobs(ctx, engine.JobRequest{PipelineType: "openai.funmarkdown.v1"})
+if err != nil {
+    log.Fatal(err)
+}
+for evt := range events {
+    switch evt.Event {
+    case "provider_chunk":
+        if chunk, ok := evt.Data.(map[string]any); ok {
+            fmt.Printf("chunk %s: %s\n", chunk["step_id"], chunk["content"])
+        }
+    case "item_completed":
+        fmt.Println("step done", evt.Data)
+    case "stream_finished":
+        fmt.Println("stream completed for job", evt.JobID)
+    }
+}
+fmt.Println("job accepted:", job.ID)
+```
+
 ### CLI でパイプラインを連結（OpenAI → OpenAI）
 `mode":"sync"` を指定するとジョブ完了まで待って結果を返すため、1 回目の結果をそのまま次のパイプラインに渡すシンプルな bash スクリプトが書けます。下記は要約 → 校正の 2 段を OpenAI パイプラインで直列実行する例です。
 

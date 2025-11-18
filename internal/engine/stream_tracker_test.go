@@ -38,9 +38,25 @@ if !containsEvent(events, "job_completed") {
 if !containsEvent(events, "stream_finished") {
 			 t.Fatalf("stream_finished イベントが含まれていません: %+v", events)
 }
-if !containsEvent(events, "provider_chunk") {
-			 t.Fatalf("provider_chunk イベントが含まれていません: %+v", events)
+	if !containsEvent(events, "provider_chunk") {
+		 t.Fatalf("provider_chunk イベントが含まれていません: %+v", events)
+	}
 }
+
+func TestStreamingTrackerEmitsChunkWhileRunning(t *testing.T) {
+	tracker := NewStreamingTracker()
+	job := &Job{ID: "job-2", Status: JobStatusRunning, StepExecutions: []StepExecution{{StepID: StepID("step-run"), Status: StepExecRunning}}}
+	tracker.Diff(job)
+	job.StepExecutions[0].Chunks = append(job.StepExecutions[0].Chunks, StepChunk{StepID: StepID("step-run"), Index: 0, Content: "partial"})
+	events := tracker.Diff(job)
+	if !containsEvent(events, "provider_chunk") {
+		 t.Fatalf("running ステップでも chunk が流れるはず: %+v", events)
+	}
+	// 同じ chunk は再送されない
+	events = tracker.Diff(job)
+	if containsEvent(events, "provider_chunk") {
+		 t.Fatalf("新規 chunk がないのに provider_chunk が再送されています: %+v", events)
+	}
 }
 
 func containsEvent(events []StreamingEvent, name string) bool {

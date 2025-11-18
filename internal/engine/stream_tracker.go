@@ -43,19 +43,18 @@ func (t *StreamingTracker) Diff(job *Job) []StreamingEvent {
 
 	for _, step := range job.StepExecutions {
 		prev := t.stepStatus[step.StepID]
-		if step.Status == prev {
-			continue
-		}
-		t.stepStatus[step.StepID] = step.Status
-		switch step.Status {
-		case StepExecRunning:
-			events = append(events, StreamingEvent{Event: "step_started", JobID: job.ID, Data: step})
-		case StepExecSuccess:
-			events = append(events, StreamingEvent{Event: "step_completed", JobID: job.ID, Data: step})
-		case StepExecFailed:
-			events = append(events, StreamingEvent{Event: "step_failed", JobID: job.ID, Data: step})
-		case StepExecCancelled:
-			events = append(events, StreamingEvent{Event: "step_cancelled", JobID: job.ID, Data: step})
+		if step.Status != prev {
+			t.stepStatus[step.StepID] = step.Status
+			switch step.Status {
+			case StepExecRunning:
+				events = append(events, StreamingEvent{Event: "step_started", JobID: job.ID, Data: step})
+			case StepExecSuccess:
+				events = append(events, StreamingEvent{Event: "step_completed", JobID: job.ID, Data: step})
+			case StepExecFailed:
+				events = append(events, StreamingEvent{Event: "step_failed", JobID: job.ID, Data: step})
+			case StepExecCancelled:
+				events = append(events, StreamingEvent{Event: "step_cancelled", JobID: job.ID, Data: step})
+			}
 		}
 
 		if len(step.Chunks) > 0 {
