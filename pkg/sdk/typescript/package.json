@@ -1,6 +1,6 @@
 {
   "name": "@pipeforge/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "TypeScript client SDK for Pipeline Engine",
   "type": "module",
   "main": "dist/index.js",
