@@ -106,6 +106,16 @@ export class PipelineEngineClient {
     return { job, events };
   }
 
+  async streamJobByID(jobID: string): Promise<AsyncIterable<StreamingEvent>> {
+    const resp = await this.fetchImpl(`${this.baseUrl}/v1/jobs/${jobID}/stream`, {
+      method: "GET"
+    });
+    if (!resp.ok || !resp.body) {
+      throw new Error(`http error: ${resp.status} ${resp.statusText}`);
+    }
+    return this.ndjsonIterator(resp.body);
+  }
+
   private async postJob(path: string, req: JobRequest, expectedStatus: number): Promise<Job> {
     const resp = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method: "POST",

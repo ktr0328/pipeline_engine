@@ -72,3 +72,18 @@ test("streamJobs yields events after job_queued", async () => {
   }
   assert.deepEqual(seen, tailEvents.map((evt) => evt.event));
 });
+
+test("streamJobByID yields historical events", async () => {
+  const events: StreamingEvent[] = [
+    { event: "job_status", job_id: "job-3", data: { status: "running" } },
+    { event: "job_completed", job_id: "job-3", data: { status: "succeeded" } }
+  ];
+  const fetchMock: FetchLike = async () => ndjsonResponse(events);
+  const client = new PipelineEngineClient({ baseUrl: "http://localhost:8085", fetch: fetchMock });
+  const stream = await client.streamJobByID("job-3");
+  const seen: string[] = [];
+  for await (const evt of stream) {
+    seen.push(evt.event);
+  }
+  assert.deepEqual(seen, ["job_status", "job_completed"]);
+});

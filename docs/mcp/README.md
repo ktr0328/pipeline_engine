@@ -70,10 +70,10 @@ MCP Host ──(stdio)── MCP Adapter ──(HTTP/JSON)── Pipeline Engine
   - Go 標準の `encoding/json` で JSON-RPC (initialize / tools/list / tools/call) を解釈し、STDIN/STDOUT でやり取り。
   - `pkg/sdk/go` をラップした `EngineClient` を利用し、Tool ごとに HTTP API へフォワードする。
   - `stream=true` でジョブ開始時は `StreamJobs` のチャンネルを読みながら `tool_event` を逐次送出し、最終的な `tool_result` ではジョブ情報のみを返す。
-- **TypeScript Adapter (`pkg/sdk/typescript/cmd/mcp`)**
-  - 既存 `PipelineEngineClient` と Node の stdio を活用。
-  - `@modelcontextprotocol/sdk` (公開予定) 互換の薄い JSON-RPC ハンドラを実装。
-  - Electron / クロスプラットフォーム配布を意識して `pkg/engine/typescript` のバイナリダウンロード機能と統合。
+- **TypeScript Adapter (`pkg/sdk/typescript/src/mcp`)**
+  - `@pipeforge/sdk` に `pipeline-engine-mcp` CLI を同梱。Node 18+ で stdio 経由の JSON-RPC を処理し、`PipelineEngineClient` を介して HTTP と連携。
+  - `createMCPAdapterClient()` で SDK クライアントを MCPAdapter に接続し、Go 版と同一の Tool 群を提供。
+  - `streamJob` / `startPipeline(stream=true)` では `tool_event` 通知をリアルタイムで発火し、最後に `tool_result` を返す構造を踏襲。
 
 ## 7. 開発ロードマップ
 1. README / ToDo を更新し、MCP 連携の目的とタスクを共有（完了）。
