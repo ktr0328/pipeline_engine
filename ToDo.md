@@ -53,7 +53,7 @@
 - [ ] Provider SDK (TypeScript / Python / Go) の公開とリポジトリ分割検討。
 - [ ] Unix ドメインソケットのリスニングサポート＆設定 (`PIPELINE_ENGINE_ADDR` で UNIX ソケット指定)。
 - [ ] 永続ストアのプラガブル化（PostgreSQL / SQLite / BoltDB 等）。
-- [ ] 厳密なリラン（途中ステップからの再実行と upstream 再利用）、ストリーム再開 (after_seq) の実装。
+- [ ] 厳密なリラン（途中ステップからの再実行と upstream 再利用）、ストリーム再開 (after_seq) の実装（仕様策定済: [docs/mcp/StreamingResume.md](docs/mcp/StreamingResume.md)）。
 - [ ] Prompt / Pipeline 定義ファイルのホットリロードと設定管理。
 - [x] MCP アダプタ (`cmd/mcp-adapter`) の設計と Go PoC 実装（startPipeline / streamJob / getJob / cancelJob / rerunJob / upsertProviderProfile 対応）。
 - [ ] MCP manifest / docs (`pipeforge.mcp.json`, `docs/mcp/*.md`) の整備と配布手順ドキュメント化。
@@ -61,7 +61,7 @@
 - [x] MCP ツール (`startPipeline`, `streamJob`) の `tool_event` ライブ配信と Go 回帰テスト整備（他ツールの高度化は継続）。
 
 ## 🌅 ロングターム / 研究課題 (docs/詳細設計書.md §8)
-- [ ] ストリーム再開 API の仕様固め＋実装 (resume token / after_seq)。
+- [ ] ストリーム再開 API の仕様固め＋実装 (resume token / after_seq)（仕様メモあり: `docs/mcp/StreamingResume.md`）。
 - [ ] StepCheckpoint 永続化の差し替え（S3 / SQLite など）とガーベジコレクション戦略。
 - [ ] ローカル API キー等の認証・アクセス制御。
 - [ ] フローエディタやノート連携ツールとの NodeBinding 機能（PromptTemplate / ProviderProfile の GUI 編集）。

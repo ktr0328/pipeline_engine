@@ -627,7 +627,7 @@ PIPELINE_ENGINE_ADDR="http://127.0.0.1:8085" pipeline-engine-mcp
 
 Node 18+ があれば同じ JSON-RPC プロトコルで stdio に待機し、Go 版と同等の機能を提供します。
 
-詳細な manifest テンプレと MCP ホストへの登録手順は [docs/mcp/ManifestGuide.md](docs/mcp/ManifestGuide.md) を参照してください。
+詳細な manifest テンプレと MCP ホストへの登録手順は [docs/mcp/ManifestGuide.md](docs/mcp/ManifestGuide.md)、`after_seq` を使った再接続仕様は [docs/mcp/StreamingResume.md](docs/mcp/StreamingResume.md) を参照してください。
 
 ## CI / リリース
 - `.github/workflows/ci.yml`: push / PR / 手動トリガーで `make test` を実行し、Go と TypeScript の両方を検証します。
