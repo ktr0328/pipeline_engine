@@ -616,7 +616,7 @@ PIPELINE_ENGINE_ADDR="http://127.0.0.1:8085" ./bin/pipeline-engine-mcp
 
 Manifest からは上記バイナリを `command` に指定し、`PIPELINE_ENGINE_ADDR`（必要なら API トークン）を `env` で渡してください。
 
-`startPipeline`（`stream=true`）と `streamJob` は MCP の `tool_event` 通知 `(method:"tool_event", params:{toolName, event, payload})` を逐次送信し、`job_queued` や `provider_chunk` などをホスト側でリアルタイム描画できます。最終的な `tool_result` にはジョブ情報のみを返すため、ホストはイベントを蓄積して UI を構築することが推奨です。
+`startPipeline`（`stream=true`）と `streamJob` は MCP の `tool_event` 通知 `(method:"tool_event", params:{toolName, event, kind, payload})` を逐次送信し、`job_queued` や `provider_chunk` などをリアルタイム描画できます。`kind` は `status` / `chunk` / `result` / `error` を取り、クライアント側でのレンダリング種別に利用できます。最終的な `tool_result` にはジョブ情報のみを返すため、ホストはイベントを蓄積して UI を構築することが推奨です。
 
 TypeScript / Node.js 向けにも `@pipeforge/sdk` に CLI (`pipeline-engine-mcp`) を同梱しています。
 

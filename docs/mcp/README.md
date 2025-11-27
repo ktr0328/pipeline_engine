@@ -30,7 +30,7 @@ MCP Host ──(stdio)── MCP Adapter ──(HTTP/JSON)── Pipeline Engine
 | `listMetrics` (拡張) | `expvar` の主要メトリクスを取得 | `GET /debug/vars` | Provider 呼び出し統計の可視化 |
 
 ## 4. ストリーミングイベントのマッピング
-- HTTP では 1 行ごとの NDJSON (`event`, `data`, `job_id` 等) を送出している。Adapter はこれを読み取り、MCP の `tool_event` (`{"jsonrpc":"2.0","method":"tool_event","params":{"toolName":"startPipeline","event":"job_status","payload":{...}}}`) として逐次通知する。
+- HTTP では 1 行ごとの NDJSON (`event`, `data`, `job_id` 等) を送出している。Adapter はこれを読み取り、MCP の `tool_event` (`{"jsonrpc":"2.0","method":"tool_event","params":{"toolName":"startPipeline","event":"job_status","kind":"status","payload":{...}}}`) として逐次通知する。
 - 1 件の `tools/call` リクエスト中に複数の `tool_event` を流し、最後に `tool_result` を返す構成。
 - マッピング例:
   - `provider_chunk` → `{"event":"provider_chunk","payload":{"step_id":...,"content":...}}`
@@ -38,6 +38,7 @@ MCP Host ──(stdio)── MCP Adapter ──(HTTP/JSON)── Pipeline Engine
   - `job_status`/`job_completed` etc. → `{"event":"job_status","payload":{...}}`
   - ストリーム終端 (`stream_finished`) で `tool_result` を確定してレスポンスを終了。
 - Adapter は NDJSON の `seq`（実装予定）を覚えておき、将来的に resume token を使った `after_seq` にも対応できるようにする。
+- `params.kind` は `status` / `chunk` / `result` / `error` を取り、UI 側でカテゴリ別に描画するために利用できる（`provider_chunk`→`chunk`, `item_completed`→`result`, `job_failed` / `step_failed` / `error`→`error`, その他は `status`）。
 
 ## 5. Manifest (`pipeforge.mcp.json`) のフォーマット
 ```jsonc

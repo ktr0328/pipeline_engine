@@ -69,8 +69,8 @@ func TestAdapterStartPipeline(t *testing.T) {
 func TestAdapterStartPipelineStreamEmitsEvents(t *testing.T) {
 	job := sampleJob("job-stream")
 	events := []engine.StreamingEvent{
-		{Event: "job_status", JobID: job.ID, Data: map[string]string{"status": "running"}},
-		{Event: "job_completed", JobID: job.ID, Data: map[string]string{"status": "succeeded"}},
+		{Event: "provider_chunk", JobID: job.ID, Data: map[string]string{"content": "chunk"}},
+		{Event: "item_completed", JobID: job.ID, Data: map[string]string{"label": "default"}},
 	}
 	client := &stubClient{
 		streamEvents:    events,
@@ -92,6 +92,14 @@ func TestAdapterStartPipelineStreamEmitsEvents(t *testing.T) {
 	for _, line := range lines {
 		if strings.Contains(line, `"method":"tool_event"`) {
 			eventCount++
+			var notification rpcNotification
+			if err := json.Unmarshal([]byte(line), &notification); err != nil {
+				t.Fatalf("decode tool event: %v", err)
+			}
+			params, _ := notification.Params.(map[string]any)
+			if params["kind"] == nil {
+				t.Fatalf("expected kind in params: %#v", params)
+			}
 			continue
 		}
 		if err := json.Unmarshal([]byte(line), &resp); err != nil {
@@ -166,7 +174,7 @@ func TestAdapterToolsList(t *testing.T) {
 
 func TestAdapterStreamJob(t *testing.T) {
 	events := []engine.StreamingEvent{
-		{Event: "job_status", JobID: "job-9", Data: map[string]string{"status": "running"}},
+		{Event: "provider_chunk", JobID: "job-9", Data: map[string]string{"content": "chunk"}},
 		{Event: "job_completed", JobID: "job-9", Data: map[string]string{"status": "succeeded"}},
 	}
 	client := &stubClient{streamExisting: events}
@@ -181,19 +189,29 @@ func TestAdapterStreamJob(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	var eventCount int
+	var kindValues []string
 	var resp rpcResponse
 	for _, line := range lines {
 		if strings.Contains(line, `"method":"tool_event"`) {
-			eventCount++
+			var notification rpcNotification
+			if err := json.Unmarshal([]byte(line), &notification); err != nil {
+				t.Fatalf("decode tool event: %v", err)
+			}
+			params, _ := notification.Params.(map[string]any)
+			if kind, _ := params["kind"].(string); kind != "" {
+				kindValues = append(kindValues, kind)
+			}
 			continue
 		}
 		if err := json.Unmarshal([]byte(line), &resp); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
 	}
-	if eventCount != len(events) {
-		t.Fatalf("expected %d tool events, got %d", len(events), eventCount)
+	if len(kindValues) != len(events) {
+		t.Fatalf("expected %d tool events, got %d", len(events), len(kindValues))
+	}
+	if kindValues[0] != "chunk" || kindValues[1] != "status" {
+		t.Fatalf("unexpected kind values: %+v", kindValues)
 	}
 	if resp.Error != nil {
 		t.Fatalf("unexpected error response: %+v", resp.Error)

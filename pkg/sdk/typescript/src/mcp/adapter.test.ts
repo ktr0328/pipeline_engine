@@ -90,8 +90,8 @@ test("adapter responds to tools/list", async () => {
 test("startPipeline stream emits tool events", async () => {
   const client = new StubClient();
   client.streamedEvents = [
-    { event: "job_status", job_id: "job-1", data: { status: "running" } },
-    { event: "job_completed", job_id: "job-1", data: { status: "succeeded" } }
+    { event: "provider_chunk", job_id: "job-1", data: { content: "chunk" } },
+    { event: "item_completed", job_id: "job-1", data: { label: "default" } }
   ];
   const streams = makeStreams({
     jsonrpc: "2.0",
@@ -108,6 +108,8 @@ test("startPipeline stream emits tool events", async () => {
   const toolEvents = responses.filter((msg) => msg.method === "tool_event");
   const result = responses.find((msg) => msg.result);
   assert.equal(toolEvents.length, 3); // job_queued + 2 events
+  const kinds = toolEvents.map((evt) => evt.params?.kind);
+  assert.deepEqual(kinds, ["status", "chunk", "result"]);
   assert.ok(result?.result?.job);
 });
 
@@ -125,7 +127,9 @@ test("streamJob forwards events", async () => {
   const adapter = new MCPAdapter({ client, input: streams.input, output: streams.output });
   await adapter.run();
   const responses = parseOutputs(streams.chunks);
-  assert.equal(responses.filter((msg) => msg.method === "tool_event").length, 1);
+  const toolEvents = responses.filter((msg) => msg.method === "tool_event");
+  assert.equal(toolEvents.length, 1);
+  assert.equal(toolEvents[0]?.params?.kind, "chunk");
   const result = responses.find((msg) => msg.result);
   assert.equal(result?.result?.job_id, "job-1");
 });

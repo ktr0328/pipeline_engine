@@ -261,6 +261,7 @@ export class MCPAdapter {
       params: {
         toolName,
         event: evt.event,
+        kind: classifyEventKind(evt.event),
         payload: evt
       }
     };
@@ -273,6 +274,21 @@ export class MCPAdapter {
     } catch (err) {
       this.logger?.error?.("failed to write json", err);
     }
+  }
+}
+
+function classifyEventKind(eventName: string): string {
+  switch (eventName) {
+    case "provider_chunk":
+      return "chunk";
+    case "item_completed":
+      return "result";
+    case "error":
+    case "job_failed":
+    case "step_failed":
+      return "error";
+    default:
+      return "status";
   }
 }
 

@@ -403,12 +403,26 @@ func (a *Adapter) emitToolEvent(toolName string, evt engine.StreamingEvent) {
 		Params: map[string]any{
 			"toolName": toolName,
 			"event":    evt.Event,
+			"kind":     classifyEventKind(evt.Event),
 			"payload":  evt,
 		},
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	_ = a.enc.Encode(&notification)
+}
+
+func classifyEventKind(eventName string) string {
+	switch eventName {
+	case "provider_chunk":
+		return "chunk"
+	case "item_completed":
+		return "result"
+	case "error", "job_failed", "step_failed":
+		return "error"
+	default:
+		return "status"
+	}
 }
 
 type rpcRequest struct {
