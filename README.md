@@ -1,4 +1,4 @@
-# Pipeline Engine
+# Pipeline Engine ![CI](https://github.com/ktr0328/pipeline_engine/actions/workflows/ci.yml/badge.svg?branch=main)
 
 ローカルマシン上で常駐／組み込みのどちらでも扱える AI パイプライン実行エンジンです。ログ・コード・ノートなど複数種類の入力を受け取り、OpenAI や Ollama などの Provider ノードを直列 / 並列に組み合わせたパイプラインを実行し、結果をストリーミングしながら返します。初期バージョンではシングルノード実装に絞り、DAG オーケストレーションや Provider 連携を段階的に拡張していきます。
 
