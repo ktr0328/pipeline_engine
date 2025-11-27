@@ -544,6 +544,59 @@ PIPELINE_ENGINE_ENGINE_VERSION=v0.2.0 npm install ./pkg/engine/typescript
 
 詳細は [pkg/sdk/typescript/README.md](pkg/sdk/typescript/README.md) を参照してください。
 
+## MCP Integration
+Multimodal Connector Protocol (MCP) に対応した薄いアダプタを追加することで、Claude Desktop や Cursor などの MCP クライアントから `pipeline-engine` を直接操作できます。設計のベースラインは次の通りです。
+
+### アーキテクチャ
+1. `pipeline-engine` 本体は従来通り HTTP API (`/v1/jobs`, `/v1/jobs/{id}/stream` など) を提供。
+2. 新規追加する `cmd/mcp-adapter` (Go) または `pkg/sdk/typescript` 派生の CLI が MCP Host から stdio で起動され、受け取った MCP Tool 呼び出しを HTTP へ委譲。
+3. アダプタは NDJSON ストリーミングを受け取り、MCP の Progress/Event 形式に変換してクライアントへ送出。
+
+### MCP ツール案
+| Tool 名 | HTTP エンドポイント | 説明 |
+| -------- | ------------------- | ---- |
+| `startPipeline` | `POST /v1/jobs` | `pipeline_type`, `input`, `mode`, `stream` を受け取り、新規ジョブ ID を返す |
+| `streamJob` | `POST /v1/jobs?stream=true` / `GET /v1/jobs/{id}/stream` | NDJSON を MCP `event` として再配信し、`provider_chunk` や `item_completed` を UI に中継 |
+| `getJob` | `GET /v1/jobs/{id}` | 最終結果を取得して IDE で閲覧 |
+| `cancelJob` | `POST /v1/jobs/{id}/cancel` | 実行中ジョブを停止 |
+| `rerunJob` | `POST /v1/jobs/{id}/rerun` | `from_step_id` / `reuse_upstream` を指定した再実行 |
+| `upsertProviderProfile` | `POST /v1/config/providers` | API キーやモデル設定を差し替え |
+
+### Manifest 例 (`pipeforge.mcp.json`)
+MCP クライアントがアダプタを発見できるよう、以下の manifest を `~/Library/Application Support/Claude/pipeforge.mcp.json` などに配置します。
+
+```jsonc
+{
+  "name": "pipeforge",
+  "description": "Pipeline Engine MCP adapter",
+  "commands": [
+    {
+      "command": "/usr/local/bin/pipeline-engine-mcp",
+      "env": {
+        "PIPELINE_ENGINE_ADDR": "http://127.0.0.1:8085",
+        "PIPELINE_ENGINE_OPENAI_API_KEY": "${PIPELINE_ENGINE_OPENAI_API_KEY}"
+      }
+    }
+  ],
+  "tools": [
+    { "name": "startPipeline", "description": "Create job via /v1/jobs" },
+    { "name": "streamJob", "description": "Forward NDJSON events" },
+    { "name": "getJob", "description": "Fetch job result" },
+    { "name": "cancelJob", "description": "Cancel running job" },
+    { "name": "rerunJob", "description": "Rerun job from step" },
+    { "name": "upsertProviderProfile", "description": "Update provider profile" }
+  ]
+}
+```
+
+### 利用フロー
+1. `pipeline-engine` を通常通り起動（`PIPELINE_ENGINE_ADDR` で待受ポートを指定）。
+2. MCP アダプタ CLI をビルドし、manifest に登録したコマンドで実行できるよう PATH へ配置。
+3. MCP クライアント（例: Claude Desktop）の設定画面で manifest を登録し、`startPipeline` などのツールを呼び出す。
+4. `streamJob` は NDJSON の `provider_chunk` を MCP イベントに変換して返すため、クライアント側で即座にトークン描画が可能。
+
+今後、`listPipelines` や `listMetrics` などの追加ツール、および `docs/mcp/*.md` での詳細仕様公開を進める計画です。
+
 ## CI / リリース
 - `.github/workflows/ci.yml`: push / PR / 手動トリガーで `make test` を実行し、Go と TypeScript の両方を検証します。
 - `.github/workflows/release.yml`: `v*` タグの push で Linux / macOS / Windows 向けバイナリをクロスビルドし、GitHub Releases にアップロードします。`@pipeforge/engine` の `postinstall` はこれらのアセット URL を既定で参照します。また同じワークフローで `@pipeforge/sdk` / `@pipeforge/engine` の npm パッケージを自動 publish します（`NPM_TOKEN` Secret が必要）。

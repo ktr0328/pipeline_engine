@@ -55,6 +55,9 @@
 - [ ] 永続ストアのプラガブル化（PostgreSQL / SQLite / BoltDB 等）。
 - [ ] 厳密なリラン（途中ステップからの再実行と upstream 再利用）、ストリーム再開 (after_seq) の実装。
 - [ ] Prompt / Pipeline 定義ファイルのホットリロードと設定管理。
+- [ ] MCP アダプタ (`cmd/mcp-adapter` or `pkg/sdk/typescript` CLI) の設計と PoC 実装。
+- [ ] MCP manifest / docs (`pipeforge.mcp.json`, `docs/mcp/*.md`) の整備と配布手順ドキュメント化。
+- [ ] MCP ツール (`startPipeline`, `streamJob`, `getJob`, `cancelJob`, `rerunJob`, `upsertProviderProfile`) と HTTP API のバインディング実装・テスト。
 
 ## 🌅 ロングターム / 研究課題 (docs/詳細設計書.md §8)
 - [ ] ストリーム再開 API の仕様固め＋実装 (resume token / after_seq)。
