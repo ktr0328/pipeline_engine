@@ -91,3 +91,4 @@ MCP Host ──(stdio)── MCP Adapter ──(HTTP/JSON)── Pipeline Engine
 ## 9. 参考
 - MCP 仕様: <https://github.com/modelcontextprotocol>
 - 既存の README セクション: [README.md#MCP Integration](../../README.md#l547)
+- manifest 設定手順: [docs/mcp/ManifestGuide.md](./ManifestGuide.md)
