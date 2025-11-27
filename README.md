@@ -602,8 +602,8 @@ MCP クライアントがアダプタを発見できるよう、以下の manife
 
 | Tool 名 | 動作 |
 | ------- | ---- |
-| `startPipeline` | `/v1/jobs` でジョブを作成（`stream=true` 指定で完了まで待機し、イベント配列を返す） |
-| `streamJob` | 既存ジョブの NDJSON を `/v1/jobs/{id}/stream` から読み取り、イベント配列として返却 |
+| `startPipeline` | `/v1/jobs` でジョブを作成（`stream=true` 指定で MCP `tool_event` をリアルタイム送出） |
+| `streamJob` | 既存ジョブの NDJSON を `/v1/jobs/{id}/stream` から読み取り、`tool_event` で中継 |
 | `getJob` / `cancelJob` / `rerunJob` | `/v1/jobs/{id}` / `/cancel` / `/rerun` をラップ |
 | `upsertProviderProfile` | `/v1/config/providers` を呼び出し ProviderProfile を upsert |
 
@@ -615,6 +615,8 @@ PIPELINE_ENGINE_ADDR="http://127.0.0.1:8085" ./bin/pipeline-engine-mcp
 ```
 
 Manifest からは上記バイナリを `command` に指定し、`PIPELINE_ENGINE_ADDR`（必要なら API トークン）を `env` で渡してください。
+
+`startPipeline`（`stream=true`）と `streamJob` は MCP の `tool_event` 通知 `(method:"tool_event", params:{toolName, event, payload})` を逐次送信し、`job_queued` や `provider_chunk` などをホスト側でリアルタイム描画できます。最終的な `tool_result` にはジョブ情報のみを返すため、ホストはイベントを蓄積して UI を構築することが推奨です。
 
 ## CI / リリース
 - `.github/workflows/ci.yml`: push / PR / 手動トリガーで `make test` を実行し、Go と TypeScript の両方を検証します。

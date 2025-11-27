@@ -66,6 +66,54 @@ func TestAdapterStartPipeline(t *testing.T) {
 	}
 }
 
+func TestAdapterStartPipelineStreamEmitsEvents(t *testing.T) {
+	job := sampleJob("job-stream")
+	events := []engine.StreamingEvent{
+		{Event: "job_status", JobID: job.ID, Data: map[string]string{"status": "running"}},
+		{Event: "job_completed", JobID: job.ID, Data: map[string]string{"status": "succeeded"}},
+	}
+	client := &stubClient{
+		streamEvents:    events,
+		streamJobResult: job,
+	}
+	req := `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"toolName":"startPipeline","arguments":{"pipeline_type":"demo","input":{"sources":[{"kind":"note","label":"m","content":"x"}]},"stream":true}}}`
+	var buf bytes.Buffer
+	a := NewAdapter(Options{
+		Client: client,
+		Reader: strings.NewReader(req),
+		Writer: &buf,
+	})
+	if err := a.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	var eventCount int
+	var resp rpcResponse
+	for _, line := range lines {
+		if strings.Contains(line, `"method":"tool_event"`) {
+			eventCount++
+			continue
+		}
+		if err := json.Unmarshal([]byte(line), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+	}
+	// Expect job_queued + len(events) notifications.
+	if eventCount != len(events)+1 {
+		t.Fatalf("expected %d tool events, got %d", len(events)+1, eventCount)
+	}
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %+v", resp.Error)
+	}
+	payload, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected result type: %T", resp.Result)
+	}
+	if payload["job"] == nil {
+		t.Fatalf("expected job payload in result")
+	}
+}
+
 func TestAdapterGetJob(t *testing.T) {
 	job := sampleJob("job-xyz")
 	client := &stubClient{getJobResult: job}
@@ -121,7 +169,7 @@ func TestAdapterStreamJob(t *testing.T) {
 		{Event: "job_status", JobID: "job-9", Data: map[string]string{"status": "running"}},
 		{Event: "job_completed", JobID: "job-9", Data: map[string]string{"status": "succeeded"}},
 	}
-	client := &stubClient{streamEvents: events}
+	client := &stubClient{streamExisting: events}
 	req := `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"toolName":"streamJob","arguments":{"job_id":"job-9"}}}`
 	var buf bytes.Buffer
 	a := NewAdapter(Options{
@@ -132,20 +180,23 @@ func TestAdapterStreamJob(t *testing.T) {
 	if err := a.Run(context.Background()); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	var eventCount int
 	var resp rpcResponse
-	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
-		t.Fatalf("decode response: %v", err)
+	for _, line := range lines {
+		if strings.Contains(line, `"method":"tool_event"`) {
+			eventCount++
+			continue
+		}
+		if err := json.Unmarshal([]byte(line), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+	}
+	if eventCount != len(events) {
+		t.Fatalf("expected %d tool events, got %d", len(events), eventCount)
 	}
 	if resp.Error != nil {
-		t.Fatalf("unexpected error: %+v", resp.Error)
-	}
-	payload, ok := resp.Result.(map[string]any)
-	if !ok {
-		t.Fatalf("unexpected result payload: %T", resp.Result)
-	}
-	respEvents, ok := payload["events"].([]interface{})
-	if !ok || len(respEvents) != len(events) {
-		t.Fatalf("unexpected events payload: %#v", payload["events"])
+		t.Fatalf("unexpected error response: %+v", resp.Error)
 	}
 }
 
@@ -154,6 +205,7 @@ type stubClient struct {
 	createJobResult *engine.Job
 	streamEvents    []engine.StreamingEvent
 	streamJobResult *engine.Job
+	streamExisting  []engine.StreamingEvent
 	getJobResult    *engine.Job
 	cancelJobResult *engine.Job
 	rerunJobResult  *engine.Job
@@ -165,8 +217,15 @@ func (s *stubClient) CreateJob(ctx context.Context, req engine.JobRequest) (*eng
 	return s.createJobResult, nil
 }
 
-func (s *stubClient) StreamJob(ctx context.Context, req engine.JobRequest) ([]engine.StreamingEvent, *engine.Job, error) {
-	return s.streamEvents, s.streamJobResult, nil
+func (s *stubClient) StreamJob(ctx context.Context, req engine.JobRequest) (<-chan engine.StreamingEvent, *engine.Job, error) {
+	ch := make(chan engine.StreamingEvent, len(s.streamEvents))
+	go func(events []engine.StreamingEvent) {
+		defer close(ch)
+		for _, evt := range events {
+			ch <- evt
+		}
+	}(s.streamEvents)
+	return ch, s.streamJobResult, nil
 }
 
 func (s *stubClient) GetJob(ctx context.Context, jobID string) (*engine.Job, error) {
@@ -186,8 +245,19 @@ func (s *stubClient) UpsertProviderProfile(ctx context.Context, profile engine.P
 	return nil
 }
 
-func (s *stubClient) StreamExistingJob(ctx context.Context, jobID string) ([]engine.StreamingEvent, error) {
-	return s.streamEvents, nil
+func (s *stubClient) StreamExistingJob(ctx context.Context, jobID string) (<-chan engine.StreamingEvent, error) {
+	events := s.streamExisting
+	if len(events) == 0 {
+		events = s.streamEvents
+	}
+	ch := make(chan engine.StreamingEvent, len(events))
+	go func() {
+		defer close(ch)
+		for _, evt := range events {
+			ch <- evt
+		}
+	}()
+	return ch, nil
 }
 
 func sampleJob(id string) *engine.Job {

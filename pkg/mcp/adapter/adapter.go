@@ -26,12 +26,12 @@ const (
 // EngineClient represents the subset of the Go SDK consumed by the MCP adapter.
 type EngineClient interface {
 	CreateJob(ctx context.Context, req engine.JobRequest) (*engine.Job, error)
-	StreamJob(ctx context.Context, req engine.JobRequest) ([]engine.StreamingEvent, *engine.Job, error)
+	StreamJob(ctx context.Context, req engine.JobRequest) (<-chan engine.StreamingEvent, *engine.Job, error)
 	GetJob(ctx context.Context, jobID string) (*engine.Job, error)
 	CancelJob(ctx context.Context, jobID string, reason string) (*engine.Job, error)
 	RerunJob(ctx context.Context, jobID string, payload gosdk.RerunRequest) (*engine.Job, error)
 	UpsertProviderProfile(ctx context.Context, profile engine.ProviderProfile) error
-	StreamExistingJob(ctx context.Context, jobID string) ([]engine.StreamingEvent, error)
+	StreamExistingJob(ctx context.Context, jobID string) (<-chan engine.StreamingEvent, error)
 }
 
 // SDKClient adapts the Go SDK client to EngineClient.
@@ -48,16 +48,8 @@ func (c *SDKClient) CreateJob(ctx context.Context, req engine.JobRequest) (*engi
 	return c.client.CreateJob(ctx, req)
 }
 
-func (c *SDKClient) StreamJob(ctx context.Context, req engine.JobRequest) ([]engine.StreamingEvent, *engine.Job, error) {
-	eventCh, job, err := c.client.StreamJobs(ctx, req)
-	if err != nil {
-		return nil, nil, err
-	}
-	var events []engine.StreamingEvent
-	for evt := range eventCh {
-		events = append(events, evt)
-	}
-	return events, job, nil
+func (c *SDKClient) StreamJob(ctx context.Context, req engine.JobRequest) (<-chan engine.StreamingEvent, *engine.Job, error) {
+	return c.client.StreamJobs(ctx, req)
 }
 
 func (c *SDKClient) GetJob(ctx context.Context, jobID string) (*engine.Job, error) {
@@ -76,7 +68,7 @@ func (c *SDKClient) UpsertProviderProfile(ctx context.Context, profile engine.Pr
 	return c.client.UpsertProviderProfile(ctx, profile)
 }
 
-func (c *SDKClient) StreamExistingJob(ctx context.Context, jobID string) ([]engine.StreamingEvent, error) {
+func (c *SDKClient) StreamExistingJob(ctx context.Context, jobID string) (<-chan engine.StreamingEvent, error) {
 	return c.client.StreamJobByID(ctx, jobID)
 }
 
@@ -239,14 +231,26 @@ func (a *Adapter) handleStartPipeline(ctx context.Context, id json.RawMessage, r
 		ReuseUpstream: args.ReuseUpstream,
 	}
 	if args.Stream {
-		events, job, err := a.client.StreamJob(ctx, req)
+		eventCh, job, err := a.client.StreamJob(ctx, req)
 		if err != nil {
 			a.respondError(id, errCodeInternalError, "stream job failed", err.Error())
 			return
 		}
+		a.emitToolEvent("startPipeline", engine.StreamingEvent{
+			Event: "job_queued",
+			JobID: job.ID,
+			Data:  job,
+		})
+		for evt := range eventCh {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			a.emitToolEvent("startPipeline", evt)
+		}
 		a.respondResult(id, map[string]any{
-			"job":    job,
-			"events": events,
+			"job": job,
 		})
 		return
 	}
@@ -344,12 +348,20 @@ func (a *Adapter) handleStreamJob(ctx context.Context, id json.RawMessage, raw j
 		a.respondError(id, errCodeInvalidParams, "job_id is required", nil)
 		return
 	}
-	events, err := a.client.StreamExistingJob(ctx, args.JobID)
+	eventCh, err := a.client.StreamExistingJob(ctx, args.JobID)
 	if err != nil {
 		a.respondError(id, errCodeInternalError, "stream job failed", err.Error())
 		return
 	}
-	a.respondResult(id, map[string]any{"job_id": args.JobID, "events": events})
+	for evt := range eventCh {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		a.emitToolEvent("streamJob", evt)
+	}
+	a.respondResult(id, map[string]any{"job_id": args.JobID})
 }
 
 func (a *Adapter) respondResult(id json.RawMessage, result interface{}) {
@@ -384,6 +396,21 @@ func (a *Adapter) respondError(id json.RawMessage, code int, message string, dat
 	_ = a.enc.Encode(&resp)
 }
 
+func (a *Adapter) emitToolEvent(toolName string, evt engine.StreamingEvent) {
+	notification := rpcNotification{
+		JSONRPC: jsonRPCVersion,
+		Method:  "tool_event",
+		Params: map[string]any{
+			"toolName": toolName,
+			"event":    evt.Event,
+			"payload":  evt,
+		},
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_ = a.enc.Encode(&notification)
+}
+
 type rpcRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id"`
@@ -396,6 +423,12 @@ type rpcResponse struct {
 	ID      json.RawMessage `json:"id"`
 	Result  interface{}     `json:"result,omitempty"`
 	Error   *rpcError       `json:"error,omitempty"`
+}
+
+type rpcNotification struct {
+	JSONRPC string      `json:"jsonrpc"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params,omitempty"`
 }
 
 type rpcError struct {

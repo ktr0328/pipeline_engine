@@ -278,8 +278,8 @@ func (c *Client) UpsertProviderProfile(ctx context.Context, profile engine.Provi
 	return nil
 }
 
-// StreamJobByID fetches NDJSON events for an existing job via GET /v1/jobs/{id}/stream.
-func (c *Client) StreamJobByID(ctx context.Context, jobID string) ([]engine.StreamingEvent, error) {
+// StreamJobByID streams NDJSON events for an existing job via GET /v1/jobs/{id}/stream`.
+func (c *Client) StreamJobByID(ctx context.Context, jobID string) (<-chan engine.StreamingEvent, error) {
 	url := fmt.Sprintf("%s/v1/jobs/%s/stream", c.BaseURL, jobID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -289,38 +289,38 @@ func (c *Client) StreamJobByID(ctx context.Context, jobID string) ([]engine.Stre
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
+		resp.Body.Close()
 		return nil, fmt.Errorf("http error: %s", resp.Status)
 	}
 
 	reader := bufio.NewReader(resp.Body)
-	var events []engine.StreamingEvent
-	for {
-		line, err := reader.ReadBytes('\n')
-		if len(strings.TrimSpace(string(line))) == 0 && err == io.EOF {
-			return events, nil
-		}
-		if len(line) == 0 {
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					return events, nil
+	ch := make(chan engine.StreamingEvent)
+	go func() {
+		defer resp.Body.Close()
+		defer close(ch)
+		for {
+			line, err := reader.ReadBytes('\n')
+			trimmed := bytes.TrimSpace(line)
+			if len(trimmed) == 0 {
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						return
+					}
+					return
 				}
-				return nil, err
+				continue
 			}
-			continue
-		}
-		var evt engine.StreamingEvent
-		if unmarshalErr := json.Unmarshal(bytes.TrimSpace(line), &evt); unmarshalErr != nil {
-			return nil, unmarshalErr
-		}
-		events = append(events, evt)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return events, nil
+			var evt engine.StreamingEvent
+			if unmarshalErr := json.Unmarshal(trimmed, &evt); unmarshalErr != nil {
+				return
 			}
-			return nil, err
+			ch <- evt
+			if err != nil {
+				return
+			}
 		}
-	}
+	}()
+	return ch, nil
 }

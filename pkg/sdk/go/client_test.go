@@ -147,8 +147,13 @@ func TestClientStreamJobByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StreamJobByID failed: %v", err)
 	}
-	if len(events) != 2 || events[0].Event != "job_status" {
-		t.Fatalf("unexpected events: %+v", events)
+
+	var got []engine.StreamingEvent
+	for evt := range events {
+		got = append(got, evt)
+	}
+	if len(got) != 2 || got[0].Event != "job_status" {
+		t.Fatalf("unexpected events: %+v", got)
 	}
 }
 

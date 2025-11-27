@@ -58,7 +58,7 @@
 - [x] MCP アダプタ (`cmd/mcp-adapter`) の設計と Go PoC 実装（startPipeline / streamJob / getJob / cancelJob / rerunJob / upsertProviderProfile 対応）。
 - [ ] MCP manifest / docs (`pipeforge.mcp.json`, `docs/mcp/*.md`) の整備と配布手順ドキュメント化。
 - [ ] MCP ツールの TypeScript 実装や `@pipeforge/sdk` 連携強化。
-- [ ] MCP ツール (`startPipeline`, `streamJob`, `getJob`, `cancelJob`, `rerunJob`, `upsertProviderProfile`) のイベント逐次配信など高度化と回帰テスト。
+- [x] MCP ツール (`startPipeline`, `streamJob`) の `tool_event` ライブ配信と Go 回帰テスト整備（他ツールの高度化は継続）。
 
 ## 🌅 ロングターム / 研究課題 (docs/詳細設計書.md §8)
 - [ ] ストリーム再開 API の仕様固め＋実装 (resume token / after_seq)。

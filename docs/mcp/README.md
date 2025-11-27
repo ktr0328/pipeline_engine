@@ -30,8 +30,9 @@ MCP Host ──(stdio)── MCP Adapter ──(HTTP/JSON)── Pipeline Engine
 | `listMetrics` (拡張) | `expvar` の主要メトリクスを取得 | `GET /debug/vars` | Provider 呼び出し統計の可視化 |
 
 ## 4. ストリーミングイベントのマッピング
-- HTTP では 1 行ごとの NDJSON (`event`, `data`, `job_id` 等) を送出している。Adapter はこれを読み取り、MCP の `tool_event` として送信。
-- 提案するマッピング:
+- HTTP では 1 行ごとの NDJSON (`event`, `data`, `job_id` 等) を送出している。Adapter はこれを読み取り、MCP の `tool_event` (`{"jsonrpc":"2.0","method":"tool_event","params":{"toolName":"startPipeline","event":"job_status","payload":{...}}}`) として逐次通知する。
+- 1 件の `tools/call` リクエスト中に複数の `tool_event` を流し、最後に `tool_result` を返す構成。
+- マッピング例:
   - `provider_chunk` → `{"event":"provider_chunk","payload":{"step_id":...,"content":...}}`
   - `item_completed` → `{"event":"artifact","payload":{"result":...}}`
   - `job_status`/`job_completed` etc. → `{"event":"job_status","payload":{...}}`
@@ -68,7 +69,7 @@ MCP Host ──(stdio)── MCP Adapter ──(HTTP/JSON)── Pipeline Engine
 - **Go Adapter (`cmd/mcp-adapter`)**
   - Go 標準の `encoding/json` で JSON-RPC (initialize / tools/list / tools/call) を解釈し、STDIN/STDOUT でやり取り。
   - `pkg/sdk/go` をラップした `EngineClient` を利用し、Tool ごとに HTTP API へフォワードする。
-  - `stream=true` でジョブ開始時は `StreamJobs` のチャンネルを全件読み取り、イベント配列としてクライアントへ返す（将来は逐次通知へ拡張予定）。
+  - `stream=true` でジョブ開始時は `StreamJobs` のチャンネルを読みながら `tool_event` を逐次送出し、最終的な `tool_result` ではジョブ情報のみを返す。
 - **TypeScript Adapter (`pkg/sdk/typescript/cmd/mcp`)**
   - 既存 `PipelineEngineClient` と Node の stdio を活用。
   - `@modelcontextprotocol/sdk` (公開予定) 互換の薄い JSON-RPC ハンドラを実装。
