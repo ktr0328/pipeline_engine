@@ -254,3 +254,73 @@ func readNDJSONStream(resp *http.Response) ([]byte, chan engine.StreamingEvent, 
 		resp.Body.Close()
 	}, nil
 }
+
+// UpsertProviderProfile calls POST /v1/config/providers to register or update a profile.
+func (c *Client) UpsertProviderProfile(ctx context.Context, profile engine.ProviderProfile) error {
+	body, err := json.Marshal(profile)
+	if err != nil {
+		return err
+	}
+	url := c.BaseURL + "/v1/config/providers"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("http error: %s", resp.Status)
+	}
+	return nil
+}
+
+// StreamJobByID fetches NDJSON events for an existing job via GET /v1/jobs/{id}/stream.
+func (c *Client) StreamJobByID(ctx context.Context, jobID string) ([]engine.StreamingEvent, error) {
+	url := fmt.Sprintf("%s/v1/jobs/%s/stream", c.BaseURL, jobID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("http error: %s", resp.Status)
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	var events []engine.StreamingEvent
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(strings.TrimSpace(string(line))) == 0 && err == io.EOF {
+			return events, nil
+		}
+		if len(line) == 0 {
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return events, nil
+				}
+				return nil, err
+			}
+			continue
+		}
+		var evt engine.StreamingEvent
+		if unmarshalErr := json.Unmarshal(bytes.TrimSpace(line), &evt); unmarshalErr != nil {
+			return nil, unmarshalErr
+		}
+		events = append(events, evt)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return events, nil
+			}
+			return nil, err
+		}
+	}
+}

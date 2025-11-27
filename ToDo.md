@@ -55,9 +55,10 @@
 - [ ] 永続ストアのプラガブル化（PostgreSQL / SQLite / BoltDB 等）。
 - [ ] 厳密なリラン（途中ステップからの再実行と upstream 再利用）、ストリーム再開 (after_seq) の実装。
 - [ ] Prompt / Pipeline 定義ファイルのホットリロードと設定管理。
-- [ ] MCP アダプタ (`cmd/mcp-adapter` or `pkg/sdk/typescript` CLI) の設計と PoC 実装。
+- [x] MCP アダプタ (`cmd/mcp-adapter`) の設計と Go PoC 実装（startPipeline / streamJob / getJob / cancelJob / rerunJob / upsertProviderProfile 対応）。
 - [ ] MCP manifest / docs (`pipeforge.mcp.json`, `docs/mcp/*.md`) の整備と配布手順ドキュメント化。
-- [ ] MCP ツール (`startPipeline`, `streamJob`, `getJob`, `cancelJob`, `rerunJob`, `upsertProviderProfile`) と HTTP API のバインディング実装・テスト。
+- [ ] MCP ツールの TypeScript 実装や `@pipeforge/sdk` 連携強化。
+- [ ] MCP ツール (`startPipeline`, `streamJob`, `getJob`, `cancelJob`, `rerunJob`, `upsertProviderProfile`) のイベント逐次配信など高度化と回帰テスト。
 
 ## 🌅 ロングターム / 研究課題 (docs/詳細設計書.md §8)
 - [ ] ストリーム再開 API の仕様固め＋実装 (resume token / after_seq)。
@@ -71,4 +72,4 @@
 - [x] `docs/詳細設計書.md` を最新実装へ随時更新（特に §5 HTTP API と §6 Engine 挙動）。
 - [x] ImplementationPlan をアップデートし、完了タスクと次フェーズを明示。
 - [x] `expvar` ベースの Provider メトリクス（call count/latency/errors/chunk）とログレベル制御を導入。
-- [ ] `docs/mcp/README.md` など MCP 連携専用ドキュメントの整備と継続更新。
+- [x] `docs/mcp/README.md` など MCP 連携専用ドキュメントの整備と継続更新（Go アダプタ反映済み、今後も更新）。

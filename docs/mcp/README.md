@@ -66,9 +66,9 @@ MCP Host ──(stdio)── MCP Adapter ──(HTTP/JSON)── Pipeline Engine
 
 ## 6. SDK / CLI 実装方針
 - **Go Adapter (`cmd/mcp-adapter`)**
-  - 依存: `github.com/sourcegraph/jsonrpc2` などシンプルな JSON-RPC 実装。
-  - `EngineClient` (既存 Go SDK) を利用し、Tool 1 つにつきラッパ関数を提供。
-  - ストリーミングは `client.StreamJobs` を利用し、チャネルを MCP イベントに変換。
+  - Go 標準の `encoding/json` で JSON-RPC (initialize / tools/list / tools/call) を解釈し、STDIN/STDOUT でやり取り。
+  - `pkg/sdk/go` をラップした `EngineClient` を利用し、Tool ごとに HTTP API へフォワードする。
+  - `stream=true` でジョブ開始時は `StreamJobs` のチャンネルを全件読み取り、イベント配列としてクライアントへ返す（将来は逐次通知へ拡張予定）。
 - **TypeScript Adapter (`pkg/sdk/typescript/cmd/mcp`)**
   - 既存 `PipelineEngineClient` と Node の stdio を活用。
   - `@modelcontextprotocol/sdk` (公開予定) 互換の薄い JSON-RPC ハンドラを実装。
@@ -77,7 +77,7 @@ MCP Host ──(stdio)── MCP Adapter ──(HTTP/JSON)── Pipeline Engine
 ## 7. 開発ロードマップ
 1. README / ToDo を更新し、MCP 連携の目的とタスクを共有（完了）。
 2. `docs/mcp/README.md`（本ドキュメント）を基に、`docs/mcp/AdapterSpec.md` や `docs/mcp/Streaming.md` を段階的に追加。
-3. Go Adapter の PoC を `cmd/mcp-adapter` として追加。`startPipeline` / `streamJob` のみを実装した CLI で基本連携を確認。
+3. ✅ Go Adapter の PoC を `cmd/mcp-adapter` として追加。`startPipeline` / `streamJob` / `getJob` / `cancelJob` / `rerunJob` / `upsertProviderProfile` を実装済み。
 4. TypeScript Adapter を `pkg/sdk/typescript/cmd/mcp` に追加し、npm からインストールできるようにする。
 5. CI に MCP Adapter の lint / test を追加。将来的には E2E テストで `pipeline-engine` + Adapter + Mock MCP Host を実行。
 

@@ -1,0 +1,205 @@
+package adapter
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/example/pipeline-engine/internal/engine"
+	gosdk "github.com/example/pipeline-engine/pkg/sdk/go"
+)
+
+func TestAdapterInitialize(t *testing.T) {
+	client := &stubClient{}
+	req := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	var buf bytes.Buffer
+	adapter := NewAdapter(Options{
+		Client: client,
+		Reader: strings.NewReader(req),
+		Writer: &buf,
+	})
+	if err := adapter.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	var resp rpcResponse
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Result == nil {
+		t.Fatalf("expected result, got nil")
+	}
+}
+
+func TestAdapterStartPipeline(t *testing.T) {
+	job := sampleJob("job-123")
+	client := &stubClient{createJobResult: job}
+	req := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"toolName":"startPipeline","arguments":{"pipeline_type":"demo","input":{"sources":[{"kind":"note","label":"m","content":"x"}]}}}}`
+	var buf bytes.Buffer
+	a := NewAdapter(Options{
+		Client: client,
+		Reader: strings.NewReader(req),
+		Writer: &buf,
+	})
+	if err := a.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	var resp rpcResponse
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %+v", resp.Error)
+	}
+	payload, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected result type %T", resp.Result)
+	}
+	jobData, ok := payload["job"].(map[string]any)
+	if !ok || jobData["id"] != "job-123" {
+		t.Fatalf("job result mismatch: %+v", jobData)
+	}
+	if client.createReq == nil || client.createReq.PipelineType != "demo" {
+		t.Fatalf("expected client to receive request, got %#v", client.createReq)
+	}
+}
+
+func TestAdapterGetJob(t *testing.T) {
+	job := sampleJob("job-xyz")
+	client := &stubClient{getJobResult: job}
+	req := `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"toolName":"getJob","arguments":{"job_id":"job-xyz"}}}`
+	var buf bytes.Buffer
+	a := NewAdapter(Options{
+		Client: client,
+		Reader: strings.NewReader(req),
+		Writer: &buf,
+	})
+	if err := a.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	var resp rpcResponse
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %+v", resp.Error)
+	}
+}
+
+func TestAdapterToolsList(t *testing.T) {
+	client := &stubClient{}
+	req := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}`,
+	}, "\n")
+	var buf bytes.Buffer
+	a := NewAdapter(Options{
+		Client: client,
+		Reader: strings.NewReader(req),
+		Writer: &buf,
+	})
+	if err := a.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	var resp rpcResponse
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	payload, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected result type %T", resp.Result)
+	}
+	tools, ok := payload["tools"].([]interface{})
+	if !ok || len(tools) == 0 {
+		t.Fatalf("expected tools list, got %#v", payload["tools"])
+	}
+}
+
+func TestAdapterStreamJob(t *testing.T) {
+	events := []engine.StreamingEvent{
+		{Event: "job_status", JobID: "job-9", Data: map[string]string{"status": "running"}},
+		{Event: "job_completed", JobID: "job-9", Data: map[string]string{"status": "succeeded"}},
+	}
+	client := &stubClient{streamEvents: events}
+	req := `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"toolName":"streamJob","arguments":{"job_id":"job-9"}}}`
+	var buf bytes.Buffer
+	a := NewAdapter(Options{
+		Client: client,
+		Reader: strings.NewReader(req),
+		Writer: &buf,
+	})
+	if err := a.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	var resp rpcResponse
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %+v", resp.Error)
+	}
+	payload, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected result payload: %T", resp.Result)
+	}
+	respEvents, ok := payload["events"].([]interface{})
+	if !ok || len(respEvents) != len(events) {
+		t.Fatalf("unexpected events payload: %#v", payload["events"])
+	}
+}
+
+type stubClient struct {
+	createReq       *engine.JobRequest
+	createJobResult *engine.Job
+	streamEvents    []engine.StreamingEvent
+	streamJobResult *engine.Job
+	getJobResult    *engine.Job
+	cancelJobResult *engine.Job
+	rerunJobResult  *engine.Job
+	profiles        []engine.ProviderProfile
+}
+
+func (s *stubClient) CreateJob(ctx context.Context, req engine.JobRequest) (*engine.Job, error) {
+	s.createReq = &req
+	return s.createJobResult, nil
+}
+
+func (s *stubClient) StreamJob(ctx context.Context, req engine.JobRequest) ([]engine.StreamingEvent, *engine.Job, error) {
+	return s.streamEvents, s.streamJobResult, nil
+}
+
+func (s *stubClient) GetJob(ctx context.Context, jobID string) (*engine.Job, error) {
+	return s.getJobResult, nil
+}
+
+func (s *stubClient) CancelJob(ctx context.Context, jobID string, reason string) (*engine.Job, error) {
+	return s.cancelJobResult, nil
+}
+
+func (s *stubClient) RerunJob(ctx context.Context, jobID string, payload gosdk.RerunRequest) (*engine.Job, error) {
+	return s.rerunJobResult, nil
+}
+
+func (s *stubClient) UpsertProviderProfile(ctx context.Context, profile engine.ProviderProfile) error {
+	s.profiles = append(s.profiles, profile)
+	return nil
+}
+
+func (s *stubClient) StreamExistingJob(ctx context.Context, jobID string) ([]engine.StreamingEvent, error) {
+	return s.streamEvents, nil
+}
+
+func sampleJob(id string) *engine.Job {
+	now := time.Unix(0, 0).UTC()
+	return &engine.Job{
+		ID:           id,
+		PipelineType: "demo",
+		Status:       engine.JobStatusQueued,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		Input: engine.JobInput{
+			Sources: []engine.Source{{Kind: engine.SourceKindNote, Label: "m", Content: "x"}},
+		},
+	}
+}

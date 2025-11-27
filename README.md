@@ -597,6 +597,25 @@ MCP クライアントがアダプタを発見できるよう、以下の manife
 
 今後、`listPipelines` や `listMetrics` などの追加ツール、および `docs/mcp/README.md` を皮切りに詳細仕様ドキュメントを拡充していく計画です。
 
+### MCP アダプタ CLI
+`cmd/mcp-adapter` が MCP Host からの JSON-RPC (`initialize` / `tools/list` / `tools/call`) を受け取り、Go SDK 経由で HTTP API を呼び出します。現在は以下のツールを実装済みです。
+
+| Tool 名 | 動作 |
+| ------- | ---- |
+| `startPipeline` | `/v1/jobs` でジョブを作成（`stream=true` 指定で完了まで待機し、イベント配列を返す） |
+| `streamJob` | 既存ジョブの NDJSON を `/v1/jobs/{id}/stream` から読み取り、イベント配列として返却 |
+| `getJob` / `cancelJob` / `rerunJob` | `/v1/jobs/{id}` / `/cancel` / `/rerun` をラップ |
+| `upsertProviderProfile` | `/v1/config/providers` を呼び出し ProviderProfile を upsert |
+
+ビルド例:
+
+```bash
+go build -o bin/pipeline-engine-mcp ./cmd/mcp-adapter
+PIPELINE_ENGINE_ADDR="http://127.0.0.1:8085" ./bin/pipeline-engine-mcp
+```
+
+Manifest からは上記バイナリを `command` に指定し、`PIPELINE_ENGINE_ADDR`（必要なら API トークン）を `env` で渡してください。
+
 ## CI / リリース
 - `.github/workflows/ci.yml`: push / PR / 手動トリガーで `make test` を実行し、Go と TypeScript の両方を検証します。
 - `.github/workflows/release.yml`: `v*` タグの push で Linux / macOS / Windows 向けバイナリをクロスビルドし、GitHub Releases にアップロードします。`@pipeforge/engine` の `postinstall` はこれらのアセット URL を既定で参照します。また同じワークフローで `@pipeforge/sdk` / `@pipeforge/engine` の npm パッケージを自動 publish します（`NPM_TOKEN` Secret が必要）。

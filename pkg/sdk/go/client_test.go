@@ -118,9 +118,67 @@ func TestClientStreamJobs(t *testing.T) {
 	}
 
 	if len(got) != 3 {
-		 t.Fatalf("unexpected number of streaming events: %+v", got)
+		t.Fatalf("unexpected number of streaming events: %+v", got)
 	}
 	if got[0].Event != "job_status" || got[1].Event != "job_completed" || got[2].Event != "stream_finished" {
-		 t.Fatalf("unexpected events: %+v", got)
+		t.Fatalf("unexpected events: %+v", got)
+	}
+}
+
+func TestClientStreamJobByID(t *testing.T) {
+	t.Parallel()
+
+	ndjson := strings.Join([]string{
+		`{"event":"job_status","job_id":"job-1","data":{"status":"running"}}`,
+		`{"event":"job_completed","job_id":"job-1","data":{"status":"succeeded"}}`,
+	}, "\n") + "\n"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/jobs/job-1/stream" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_, _ = w.Write([]byte(ndjson))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	events, err := client.StreamJobByID(context.Background(), "job-1")
+	if err != nil {
+		t.Fatalf("StreamJobByID failed: %v", err)
+	}
+	if len(events) != 2 || events[0].Event != "job_status" {
+		t.Fatalf("unexpected events: %+v", events)
+	}
+}
+
+func TestClientUpsertProviderProfile(t *testing.T) {
+	t.Parallel()
+
+	var received engine.ProviderProfile
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/config/providers" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	profile := engine.ProviderProfile{
+		ID:           "openai-main",
+		Kind:         engine.ProviderOpenAI,
+		BaseURI:      "https://api.openai.com/v1",
+		DefaultModel: "gpt-4o-mini",
+	}
+	if err := client.UpsertProviderProfile(context.Background(), profile); err != nil {
+		t.Fatalf("UpsertProviderProfile failed: %v", err)
+	}
+	if received.ID != profile.ID || received.DefaultModel != profile.DefaultModel {
+		t.Fatalf("received profile mismatch: %+v", received)
 	}
 }
