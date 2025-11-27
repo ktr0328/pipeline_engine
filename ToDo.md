@@ -33,6 +33,7 @@
 - [x] API エラー形式 `{ error: { code, message, details } }` を全エンドポイントで統一。
 - [x] ストリーム終端を明示する `stream_finished` イベントを追加し、README / 詳細設計書に記載。
 - [x] Provider chunk (`provider_chunk`) をストリーミングに含め、StepExecution とドキュメントへ反映。
+- [x] `/v1/config/pipelines` / `/v1/metrics` の追加でパイプライン一覧と Provider メトリクスを取得可能に。
 
 ### SDK / クライアント
 - [x] `pkg/sdk/go/client.go` に HTTP クライアント（CreateJob / GetJob / Stream / Cancel / Rerun）を実装。
@@ -40,6 +41,8 @@
 - [x] TypeScript SDK の最小実装を `pkg/sdk/typescript` に追加（Electron からのストリーミング chunk 対応）。
 - [x] Node/Electron でエンジンバイナリを同梱・起動できる `@pipeforge/engine` パッケージを追加。
 - [x] TypeScript SDK / Engine パッケージ向けのユニット & 統合テストを整備。
+- [x] Go / TypeScript SDK に `listPipelines()` / `getMetrics()` を追加し、MCP ツール (`listPipelines`, `listMetrics`) から利用できるようにした。
+- [x] サンプル (`samples/go/basic`, `samples/ts/basic`) とモックサーバー/テストを追加し、実行例を README から参照可能にした。
 
 ### テスト / DevEx
 - [x] Engine / store / HTTP ハンドラ向けのユニットテストを整備し、`go test ./...` で基本的な動作確認が可能。
@@ -47,6 +50,7 @@
 - [x] GitHub Actions CI (`make test`) を設定し、Go / TypeScript の自動テストを実行。
 - [x] リリース用ワークフローで各 OS 向けバイナリをビルドし、GitHub Releases へ配布。
 - [x] `@pipeforge/sdk` / `@pipeforge/engine` を `v*` タグの Release 時に npm publish する自動化。
+- [x] サンプルコードを含む `go test ./...` / `npm test` の統合（ts_tests + sample テスト）を整備。
 
 ## 🗺️ ミドルターム (README ロードマップ参照)
 - [ ] DAG スケジューラの高度化：複数ノード並列、リトライ、ステップ毎のタイムアウト設定。
@@ -73,3 +77,4 @@
 - [x] ImplementationPlan をアップデートし、完了タスクと次フェーズを明示。
 - [x] `expvar` ベースの Provider メトリクス（call count/latency/errors/chunk）とログレベル制御を導入。
 - [x] `docs/mcp/README.md` など MCP 連携専用ドキュメントの整備と継続更新（Go アダプタ反映済み、今後も更新）。
+- [x] MCP manifest ガイド/README に `listPipelines` / `listMetrics` など新ツールとサンプルディレクトリを追記。
