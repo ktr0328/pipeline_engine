@@ -71,3 +71,4 @@
 - [x] `docs/詳細設計書.md` を最新実装へ随時更新（特に §5 HTTP API と §6 Engine 挙動）。
 - [x] ImplementationPlan をアップデートし、完了タスクと次フェーズを明示。
 - [x] `expvar` ベースの Provider メトリクス（call count/latency/errors/chunk）とログレベル制御を導入。
+- [ ] `docs/mcp/README.md` など MCP 連携専用ドキュメントの整備と継続更新。

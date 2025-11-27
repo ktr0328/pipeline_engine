@@ -595,7 +595,7 @@ MCP クライアントがアダプタを発見できるよう、以下の manife
 3. MCP クライアント（例: Claude Desktop）の設定画面で manifest を登録し、`startPipeline` などのツールを呼び出す。
 4. `streamJob` は NDJSON の `provider_chunk` を MCP イベントに変換して返すため、クライアント側で即座にトークン描画が可能。
 
-今後、`listPipelines` や `listMetrics` などの追加ツール、および `docs/mcp/*.md` での詳細仕様公開を進める計画です。
+今後、`listPipelines` や `listMetrics` などの追加ツール、および `docs/mcp/README.md` を皮切りに詳細仕様ドキュメントを拡充していく計画です。
 
 ## CI / リリース
 - `.github/workflows/ci.yml`: push / PR / 手動トリガーで `make test` を実行し、Go と TypeScript の両方を検証します。
