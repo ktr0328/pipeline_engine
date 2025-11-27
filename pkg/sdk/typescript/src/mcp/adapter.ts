@@ -29,7 +29,7 @@ export interface MCPClient {
   cancelJob(jobID: string, reason?: string): Promise<Job>;
   rerunJob(jobID: string, payload: Record<string, unknown>): Promise<Job>;
   upsertProviderProfile(profile: ProviderProfileInput): Promise<void>;
-  streamJobByID(jobID: string): Promise<AsyncIterable<StreamingEvent>>;
+  streamJobByID(jobID: string, afterSeq?: number): Promise<AsyncIterable<StreamingEvent>>;
 }
 
 export interface ToolDefinition {
@@ -384,6 +384,6 @@ export function createMCPAdapterClient(client: PipelineEngineClient): MCPClient 
     cancelJob: (id, reason) => client.cancelJob(id, reason),
     rerunJob: (id, payload) => client.rerunJob(id, payload),
     upsertProviderProfile: (profile) => client.upsertProviderProfile(profile),
-    streamJobByID: (id) => client.streamJobByID(id)
+    streamJobByID: (id, afterSeq) => client.streamJobByID(id, afterSeq)
   };
 }
