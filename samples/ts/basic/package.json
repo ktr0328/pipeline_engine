@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "tsx index.ts"
+    "start": "tsx index.ts",
+    "test": "node test.js"
   },
   "dependencies": {
     "@pipeforge/sdk": "file:../../../pkg/sdk/typescript",
