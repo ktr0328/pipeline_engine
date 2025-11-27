@@ -78,12 +78,17 @@ test("streamJobByID yields historical events", async () => {
     { event: "job_status", job_id: "job-3", data: { status: "running" } },
     { event: "job_completed", job_id: "job-3", data: { status: "succeeded" } }
   ];
-  const fetchMock: FetchLike = async () => ndjsonResponse(events);
+  let capturedUrl = "";
+  const fetchMock: FetchLike = async (url) => {
+    capturedUrl = url.toString();
+    return ndjsonResponse(events);
+  };
   const client = new PipelineEngineClient({ baseUrl: "http://localhost:8085", fetch: fetchMock });
-  const stream = await client.streamJobByID("job-3");
+  const stream = await client.streamJobByID("job-3", 5);
   const seen: string[] = [];
   for await (const evt of stream) {
     seen.push(evt.event);
   }
   assert.deepEqual(seen, ["job_status", "job_completed"]);
+  assert.equal(capturedUrl.endsWith("/v1/jobs/job-3/stream?after_seq=5"), true);
 });

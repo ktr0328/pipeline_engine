@@ -21,7 +21,7 @@ MCP Host ──(stdio)── MCP Adapter ──(HTTP/JSON)── Pipeline Engine
 | Tool 名 | 説明 | バッキング API | 追加メモ |
 | ------- | ---- | --------------- | -------- |
 | `startPipeline` | `pipeline_type`, `input`, `mode`, `stream` などを受け、新規 Job を作成 | `POST /v1/jobs` | レスポンスは `job_id`, `status`, `created_at` を返す |
-| `streamJob` | NDJSON ストリームをリアルタイム転送 | `POST /v1/jobs?stream=true` or `GET /v1/jobs/{id}/stream` | MCP `event` に `job_status`, `provider_chunk`, `item_completed` 等をマップ |
+| `streamJob` | NDJSON ストリームをリアルタイム転送 | `POST /v1/jobs?stream=true` or `GET /v1/jobs/{id}/stream` | MCP `event` に `job_status`, `provider_chunk`, `item_completed` 等をマップ。`after_seq` で途中再開 |
 | `getJob` | Job の詳細と結果を取得 | `GET /v1/jobs/{id}` | IDE が履歴を表示する用途 |
 | `cancelJob` | 実行中ジョブをキャンセル | `POST /v1/jobs/{id}/cancel` | `reason` を引数で受け取れるようにする |
 | `rerunJob` | `from_step_id`/`reuse_upstream` 付きのリラン | `POST /v1/jobs/{id}/rerun` | 戻り値は新しい Job ID |

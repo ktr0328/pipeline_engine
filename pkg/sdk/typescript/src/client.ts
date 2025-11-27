@@ -106,8 +106,9 @@ export class PipelineEngineClient {
     return { job, events };
   }
 
-  async streamJobByID(jobID: string): Promise<AsyncIterable<StreamingEvent>> {
-    const resp = await this.fetchImpl(`${this.baseUrl}/v1/jobs/${jobID}/stream`, {
+  async streamJobByID(jobID: string, afterSeq?: number): Promise<AsyncIterable<StreamingEvent>> {
+    const qs = afterSeq && afterSeq > 0 ? `?after_seq=${afterSeq}` : "";
+    const resp = await this.fetchImpl(`${this.baseUrl}/v1/jobs/${jobID}/stream${qs}`, {
       method: "GET"
     });
     if (!resp.ok || !resp.body) {

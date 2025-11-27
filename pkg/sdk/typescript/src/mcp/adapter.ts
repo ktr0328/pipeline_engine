@@ -233,7 +233,9 @@ export class MCPAdapter {
       this.respondError(id ?? null, -32602, "job_id is required", null);
       return;
     }
-    const events = await this.client.streamJobByID(args.job_id);
+    const afterSeq =
+      typeof args.after_seq === "number" && args.after_seq > 0 ? args.after_seq : undefined;
+    const events = await this.client.streamJobByID(args.job_id, afterSeq);
     for await (const evt of events) {
       this.emitToolEvent("streamJob", evt);
     }
@@ -262,6 +264,7 @@ export class MCPAdapter {
         toolName,
         event: evt.event,
         kind: classifyEventKind(evt.event),
+        seq: evt.seq,
         payload: evt
       }
     };
@@ -314,7 +317,10 @@ function defaultTools(): ToolDefinition[] {
       inputSchema: {
         type: "object",
         required: ["job_id"],
-        properties: { job_id: { type: "string" } }
+        properties: {
+          job_id: { type: "string" },
+          after_seq: { type: "number", minimum: 0 }
+        }
       }
     },
     {

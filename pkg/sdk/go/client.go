@@ -279,8 +279,12 @@ func (c *Client) UpsertProviderProfile(ctx context.Context, profile engine.Provi
 }
 
 // StreamJobByID streams NDJSON events for an existing job via GET /v1/jobs/{id}/stream`.
-func (c *Client) StreamJobByID(ctx context.Context, jobID string) (<-chan engine.StreamingEvent, error) {
-	url := fmt.Sprintf("%s/v1/jobs/%s/stream", c.BaseURL, jobID)
+func (c *Client) StreamJobByID(ctx context.Context, jobID string, afterSeq ...uint64) (<-chan engine.StreamingEvent, error) {
+	query := ""
+	if len(afterSeq) > 0 && afterSeq[0] > 0 {
+		query = fmt.Sprintf("?after_seq=%d", afterSeq[0])
+	}
+	url := fmt.Sprintf("%s/v1/jobs/%s/stream%s", c.BaseURL, jobID, query)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err

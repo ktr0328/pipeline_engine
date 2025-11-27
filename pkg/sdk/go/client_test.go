@@ -134,8 +134,8 @@ func TestClientStreamJobByID(t *testing.T) {
 	}, "\n") + "\n"
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/jobs/job-1/stream" {
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/jobs/job-1/stream" || r.URL.Query().Get("after_seq") != "7" {
+			t.Fatalf("unexpected request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
 		}
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		_, _ = w.Write([]byte(ndjson))
@@ -143,7 +143,7 @@ func TestClientStreamJobByID(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	events, err := client.StreamJobByID(context.Background(), "job-1")
+	events, err := client.StreamJobByID(context.Background(), "job-1", 7)
 	if err != nil {
 		t.Fatalf("StreamJobByID failed: %v", err)
 	}

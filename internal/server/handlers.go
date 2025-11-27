@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/example/pipeline-engine/internal/engine"
@@ -19,6 +21,9 @@ type Handler struct {
 	engine    engine.Engine
 	startedAt time.Time
 	version   string
+	eventMu   sync.RWMutex
+	eventSeq  map[string]uint64
+	eventLogs map[string][]engine.StreamingEvent
 }
 
 type rerunRequest struct {
@@ -62,7 +67,13 @@ func NewHandler(e engine.Engine, startedAt time.Time, version string) *Handler {
 	if version == "" {
 		version = Version
 	}
-	return &Handler{engine: e, startedAt: startedAt, version: version}
+	return &Handler{
+		engine:    e,
+		startedAt: startedAt,
+		version:   version,
+		eventSeq:  map[string]uint64{},
+		eventLogs: map[string][]engine.StreamingEvent{},
+	}
 }
 
 // Register registers all HTTP routes.
@@ -207,7 +218,7 @@ func (h *Handler) createJob(w http.ResponseWriter, r *http.Request) {
 		enc := json.NewEncoder(w)
 		flusher, _ := w.(http.Flusher)
 
-		queued := engine.StreamingEvent{Event: "job_queued", JobID: job.ID, Data: job}
+		queued := h.appendEvent(engine.StreamingEvent{Event: "job_queued", JobID: job.ID, Data: job})
 		if err := enc.Encode(queued); err != nil {
 			return
 		}
@@ -216,6 +227,7 @@ func (h *Handler) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for event := range events {
+			event = h.appendEvent(event)
 			if err := enc.Encode(event); err != nil {
 				return
 			}
@@ -322,29 +334,71 @@ func (h *Handler) streamExistingJob(w http.ResponseWriter, r *http.Request, jobI
 	enc := json.NewEncoder(w)
 	flusher, _ := w.(http.Flusher)
 
+	var afterSeq uint64
+	if raw := r.URL.Query().Get("after_seq"); raw != "" {
+		if val, err := strconv.ParseUint(raw, 10, 64); err == nil {
+			afterSeq = val
+		}
+	}
+
 	ctx := r.Context()
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
 	tracker := engine.NewStreamingTracker()
-	for {
-		job, err := h.engine.GetJob(ctx, jobID)
-		if err != nil {
-			writeStreamError(enc, flusher, jobID, err)
-			return
-		}
+	lastSeq := afterSeq
 
-		for _, event := range tracker.Diff(job) {
-			if err := enc.Encode(event); err != nil {
+	for {
+		sent := false
+		if events := h.eventsAfter(jobID, lastSeq); len(events) > 0 {
+			for _, event := range events {
+				if event.Seq <= lastSeq {
+					continue
+				}
+				if err := enc.Encode(event); err != nil {
+					return
+				}
+				if flusher != nil {
+					flusher.Flush()
+				}
+				lastSeq = event.Seq
+				sent = true
+				if event.Event == "stream_finished" {
+					return
+				}
+			}
+		} else if !h.hasEventLog(jobID) {
+			job, err := h.engine.GetJob(ctx, jobID)
+			if err != nil {
+				h.writeStreamError(enc, flusher, jobID, err)
 				return
 			}
-			if flusher != nil {
-				flusher.Flush()
+
+			for _, event := range tracker.Diff(job) {
+				event = h.appendEvent(event)
+				if event.Seq <= lastSeq {
+					continue
+				}
+				if err := enc.Encode(event); err != nil {
+					return
+				}
+				if flusher != nil {
+					flusher.Flush()
+				}
+				lastSeq = event.Seq
+				sent = true
+				if event.Event == "stream_finished" {
+					return
+				}
+			}
+
+			if isTerminal(job.Status) && !sent {
+				return
 			}
 		}
 
-		if isTerminal(job.Status) {
-			return
+		if sent {
+			continue
 		}
 
 		select {
@@ -382,8 +436,9 @@ func writeAPIError(w http.ResponseWriter, status int, code, message string, deta
 	writeJSON(w, status, payload)
 }
 
-func writeStreamError(enc *json.Encoder, flusher http.Flusher, jobID string, err error) {
-	_ = enc.Encode(engine.StreamingEvent{Event: "error", JobID: jobID, Data: err.Error()})
+func (h *Handler) writeStreamError(enc *json.Encoder, flusher http.Flusher, jobID string, err error) {
+	evt := h.appendEvent(engine.StreamingEvent{Event: "error", JobID: jobID, Data: err.Error()})
+	_ = enc.Encode(evt)
 	if flusher != nil {
 		flusher.Flush()
 	}
@@ -397,6 +452,58 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 
 func writeNotFound(w http.ResponseWriter) {
 	writeAPIError(w, http.StatusNotFound, "not_found", "resource not found", nil)
+}
+
+func (h *Handler) appendEvent(evt engine.StreamingEvent) engine.StreamingEvent {
+	if evt.JobID == "" {
+		return evt
+	}
+	h.eventMu.Lock()
+	defer h.eventMu.Unlock()
+	seq := h.eventSeq[evt.JobID] + 1
+	evt.Seq = seq
+	h.eventSeq[evt.JobID] = seq
+	h.eventLogs[evt.JobID] = append(h.eventLogs[evt.JobID], evt)
+	return evt
+}
+
+func (h *Handler) eventsAfter(jobID string, afterSeq uint64) []engine.StreamingEvent {
+	h.eventMu.RLock()
+	defer h.eventMu.RUnlock()
+	events := h.eventLogs[jobID]
+	if len(events) == 0 {
+		return nil
+	}
+	result := make([]engine.StreamingEvent, 0, len(events))
+	for _, evt := range events {
+		if evt.Seq > afterSeq {
+			result = append(result, evt)
+		}
+	}
+	return result
+}
+
+func (h *Handler) hasEventLog(jobID string) bool {
+	h.eventMu.RLock()
+	defer h.eventMu.RUnlock()
+	if seq, ok := h.eventSeq[jobID]; ok && seq > 0 {
+		return true
+	}
+	if events := h.eventLogs[jobID]; len(events) > 0 {
+		return true
+	}
+	return false
+}
+
+func (h *Handler) lastLoggedEvent(jobID string) *engine.StreamingEvent {
+	h.eventMu.RLock()
+	defer h.eventMu.RUnlock()
+	events := h.eventLogs[jobID]
+	if len(events) == 0 {
+		return nil
+	}
+	evt := events[len(events)-1]
+	return &evt
 }
 
 func writeMethodNotAllowed(w http.ResponseWriter) {

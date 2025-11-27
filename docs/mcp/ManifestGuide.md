@@ -57,7 +57,7 @@ Claude Desktop や Cursor などの MCP ホストから `pipeline-engine` を利
 
 ## 4. 動作確認
 1. MCP ホストから `startPipeline` ツールを呼び出し、`pipeline_type` と `input` を指定してジョブが作成できるか確認。
-2. `streamJob`/`startPipeline(stream=true)` 実行時に `tool_event` がリアルタイムで流れるかをホスト UI 上でチェック。`params.kind` 値（`status`/`chunk`/`result`/`error`）を使ってトークン描画や結果表示を実装できる。
+2. `streamJob`/`startPipeline(stream=true)` 実行時に `tool_event` がリアルタイムで流れるかをホスト UI 上でチェック。`params.kind` 値（`status`/`chunk`/`result`/`error`）や `params.seq` を使ってトークン描画や欠落検知を実装できる。途中断から復帰する場合は `streamJob` の `after_seq` 引数に最後の `seq` を渡す。
 3. API キーの入れ替えは `upsertProviderProfile` を使い、OpenAI / Ollama などの設定が反映されるか `GET /v1/config/providers` で確認。
 
 ## 5. トラブルシュート

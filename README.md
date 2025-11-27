@@ -230,7 +230,7 @@ curl -N -H "Content-Type: application/json" \
   -d '{"pipeline_type":"summarize.v0","input":{"sources":[]}}'
 ```
 
-`/v1/jobs/{id}/stream` に対して GET することで、既存ジョブのステータスを監視することもできます。代表的なイベント種別は以下の通りです。
+`/v1/jobs/{id}/stream` に対して GET することで、既存ジョブのステータスを監視することもできます。途中で接続が切れた場合は `after_seq=<最後に受信した seq>` を付けて再呼び出すと欠落分のみ再取得できます（例: `/v1/jobs/{id}/stream?after_seq=42`）。代表的なイベント種別は以下の通りです。
 
 | Event 名            | 説明 |
 | ------------------- | ---- |
@@ -556,7 +556,7 @@ Multimodal Connector Protocol (MCP) に対応した薄いアダプタを追加�
 | Tool 名 | HTTP エンドポイント | 説明 |
 | -------- | ------------------- | ---- |
 | `startPipeline` | `POST /v1/jobs` | `pipeline_type`, `input`, `mode`, `stream` を受け取り、新規ジョブ ID を返す |
-| `streamJob` | `POST /v1/jobs?stream=true` / `GET /v1/jobs/{id}/stream` | NDJSON を MCP `event` として再配信し、`provider_chunk` や `item_completed` を UI に中継 |
+| `streamJob` | `POST /v1/jobs?stream=true` / `GET /v1/jobs/{id}/stream` | NDJSON を MCP `event` として再配信し、`provider_chunk` や `item_completed` を UI に中継。`after_seq` を指定して途中から再開可能 |
 | `getJob` | `GET /v1/jobs/{id}` | 最終結果を取得して IDE で閲覧 |
 | `cancelJob` | `POST /v1/jobs/{id}/cancel` | 実行中ジョブを停止 |
 | `rerunJob` | `POST /v1/jobs/{id}/rerun` | `from_step_id` / `reuse_upstream` を指定した再実行 |

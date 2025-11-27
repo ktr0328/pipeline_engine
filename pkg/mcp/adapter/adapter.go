@@ -31,7 +31,7 @@ type EngineClient interface {
 	CancelJob(ctx context.Context, jobID string, reason string) (*engine.Job, error)
 	RerunJob(ctx context.Context, jobID string, payload gosdk.RerunRequest) (*engine.Job, error)
 	UpsertProviderProfile(ctx context.Context, profile engine.ProviderProfile) error
-	StreamExistingJob(ctx context.Context, jobID string) (<-chan engine.StreamingEvent, error)
+	StreamExistingJob(ctx context.Context, jobID string, afterSeq uint64) (<-chan engine.StreamingEvent, error)
 }
 
 // SDKClient adapts the Go SDK client to EngineClient.
@@ -68,7 +68,10 @@ func (c *SDKClient) UpsertProviderProfile(ctx context.Context, profile engine.Pr
 	return c.client.UpsertProviderProfile(ctx, profile)
 }
 
-func (c *SDKClient) StreamExistingJob(ctx context.Context, jobID string) (<-chan engine.StreamingEvent, error) {
+func (c *SDKClient) StreamExistingJob(ctx context.Context, jobID string, afterSeq uint64) (<-chan engine.StreamingEvent, error) {
+	if afterSeq > 0 {
+		return c.client.StreamJobByID(ctx, jobID, afterSeq)
+	}
 	return c.client.StreamJobByID(ctx, jobID)
 }
 
@@ -348,7 +351,7 @@ func (a *Adapter) handleStreamJob(ctx context.Context, id json.RawMessage, raw j
 		a.respondError(id, errCodeInvalidParams, "job_id is required", nil)
 		return
 	}
-	eventCh, err := a.client.StreamExistingJob(ctx, args.JobID)
+	eventCh, err := a.client.StreamExistingJob(ctx, args.JobID, args.AfterSeq)
 	if err != nil {
 		a.respondError(id, errCodeInternalError, "stream job failed", err.Error())
 		return
@@ -404,6 +407,7 @@ func (a *Adapter) emitToolEvent(toolName string, evt engine.StreamingEvent) {
 			"toolName": toolName,
 			"event":    evt.Event,
 			"kind":     classifyEventKind(evt.Event),
+			"seq":      evt.Seq,
 			"payload":  evt,
 		},
 	}
@@ -482,7 +486,8 @@ type rerunJobArgs struct {
 }
 
 type streamJobArgs struct {
-	JobID string `json:"job_id"`
+	JobID    string `json:"job_id"`
+	AfterSeq uint64 `json:"after_seq,omitempty"`
 }
 
 func defaultTools() []Tool {

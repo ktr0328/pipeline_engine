@@ -78,6 +78,7 @@ export interface JobError {
 }
 
 export interface StreamingEvent<T = any> {
+  seq?: number;
   event: string;
   job_id: string;
   data: T;

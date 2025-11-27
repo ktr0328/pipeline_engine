@@ -263,7 +263,7 @@ func (s *stubClient) UpsertProviderProfile(ctx context.Context, profile engine.P
 	return nil
 }
 
-func (s *stubClient) StreamExistingJob(ctx context.Context, jobID string) (<-chan engine.StreamingEvent, error) {
+func (s *stubClient) StreamExistingJob(ctx context.Context, jobID string, afterSeq uint64) (<-chan engine.StreamingEvent, error) {
 	events := s.streamExisting
 	if len(events) == 0 {
 		events = s.streamEvents

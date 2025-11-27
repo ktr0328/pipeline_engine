@@ -205,6 +205,7 @@ type StepCheckpoint struct {
 }
 
 type StreamingEvent struct {
+	Seq   uint64      `json:"seq,omitempty"`
 	Event string      `json:"event"`
 	JobID string      `json:"job_id"`
 	Data  interface{} `json:"data"`

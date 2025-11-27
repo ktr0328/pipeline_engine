@@ -56,7 +56,7 @@
 - [ ] 厳密なリラン（途中ステップからの再実行と upstream 再利用）、ストリーム再開 (after_seq) の実装（仕様策定済: [docs/mcp/StreamingResume.md](docs/mcp/StreamingResume.md)）。
 - [ ] Prompt / Pipeline 定義ファイルのホットリロードと設定管理。
 - [x] MCP アダプタ (`cmd/mcp-adapter`) の設計と Go PoC 実装（startPipeline / streamJob / getJob / cancelJob / rerunJob / upsertProviderProfile 対応）。
-- [ ] MCP manifest / docs (`pipeforge.mcp.json`, `docs/mcp/*.md`) の整備と配布手順ドキュメント化。
+- [x] MCP manifest / docs (`pipeforge.mcp.json`, `docs/mcp/*.md`) の整備と配布手順ドキュメント化。
 - [x] MCP ツールの TypeScript 実装や `@pipeforge/sdk` 連携強化（`pipeline-engine-mcp` CLI / Adapter を追加）。
 - [x] MCP ツール (`startPipeline`, `streamJob`) の `tool_event` ライブ配信と Go 回帰テスト整備（他ツールの高度化は継続）。
 
