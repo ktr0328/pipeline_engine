@@ -13,6 +13,7 @@ import type {
 class StubClient {
   job: Job = { id: "job-1", pipeline_type: "demo", status: "queued", input: { sources: [] } };
   streamedEvents: StreamingEvent[] = [];
+  lastAfterSeq?: number;
 
   async createJob(req: JobRequest): Promise<Job> {
     this.job = { ...this.job, pipeline_type: req.pipeline_type };
@@ -47,7 +48,8 @@ class StubClient {
     return;
   }
 
-  async streamJobByID(): Promise<AsyncIterable<StreamingEvent>> {
+  async streamJobByID(_jobID: string, afterSeq?: number): Promise<AsyncIterable<StreamingEvent>> {
+    this.lastAfterSeq = afterSeq;
     const events = this.streamedEvents;
     return (async function* () {
       for (const evt of events) {
@@ -132,4 +134,20 @@ test("streamJob forwards events", async () => {
   assert.equal(toolEvents[0]?.params?.kind, "chunk");
   const result = responses.find((msg) => msg.result);
   assert.equal(result?.result?.job_id, "job-1");
+});
+
+test("streamJob accepts after_seq argument", async () => {
+  const client = new StubClient();
+  client.streamedEvents = [
+    { event: "job_status", job_id: "job-2", data: { status: "running" } }
+  ];
+  const streams = makeStreams({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: { toolName: "streamJob", arguments: { job_id: "job-2", after_seq: 9 } }
+  });
+  const adapter = new MCPAdapter({ client, input: streams.input, output: streams.output });
+  await adapter.run();
+  assert.equal(client.lastAfterSeq, 9);
 });

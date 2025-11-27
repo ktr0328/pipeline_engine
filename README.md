@@ -14,6 +14,8 @@
 make test
 ```
 
+`go test ./...` でも `ts_tests` 経由で `npm test` (TypeScript SDK / Engine) が呼ばれるため、Node.js 18+ と npm のインストールが必要です。
+
 ## 主な特徴
 - Go 製の軽量エンジン (`internal/engine`) と HTTP サーバー (`internal/server`) を同一バイナリで提供。
 - Provider 抽象（OpenAI / Ollama / 画像生成 / ローカルツール等）と構造化プロンプト `PromptTemplate` を備えた Step 定義。

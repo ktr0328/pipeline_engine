@@ -218,12 +218,34 @@ func TestAdapterStreamJob(t *testing.T) {
 	}
 }
 
+func TestAdapterStreamJobAfterSeq(t *testing.T) {
+	client := &stubClient{
+		streamExisting: []engine.StreamingEvent{
+			{Event: "job_status", JobID: "job-after", Data: map[string]string{"status": "running"}},
+		},
+	}
+	req := `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"toolName":"streamJob","arguments":{"job_id":"job-after","after_seq":5}}}`
+	var buf bytes.Buffer
+	a := NewAdapter(Options{
+		Client: client,
+		Reader: strings.NewReader(req),
+		Writer: &buf,
+	})
+	if err := a.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if client.streamAfterSeq != 5 {
+		t.Fatalf("expected after_seq=5, got %d", client.streamAfterSeq)
+	}
+}
+
 type stubClient struct {
 	createReq       *engine.JobRequest
 	createJobResult *engine.Job
 	streamEvents    []engine.StreamingEvent
 	streamJobResult *engine.Job
 	streamExisting  []engine.StreamingEvent
+	streamAfterSeq  uint64
 	getJobResult    *engine.Job
 	cancelJobResult *engine.Job
 	rerunJobResult  *engine.Job
@@ -264,6 +286,7 @@ func (s *stubClient) UpsertProviderProfile(ctx context.Context, profile engine.P
 }
 
 func (s *stubClient) StreamExistingJob(ctx context.Context, jobID string, afterSeq uint64) (<-chan engine.StreamingEvent, error) {
+	s.streamAfterSeq = afterSeq
 	events := s.streamExisting
 	if len(events) == 0 {
 		events = s.streamEvents

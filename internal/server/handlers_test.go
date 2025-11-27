@@ -132,6 +132,55 @@ func TestHandlerCreateJobStream(t *testing.T) {
 	}
 }
 
+func TestHandlerStreamExistingJobAfterSeq(t *testing.T) {
+	t.Parallel()
+
+	job := minimalJob("job-resume")
+	job.Status = engine.JobStatusSucceeded
+	job.StepExecutions = []engine.StepExecution{{StepID: engine.StepID("step-1"), Status: engine.StepExecSuccess}}
+
+	stub := &stubEngine{
+		getJobFunc: func(ctx context.Context, jobID string) (*engine.Job, error) {
+			if jobID != "job-resume" {
+				t.Fatalf("unexpected job id: %s", jobID)
+			}
+			return job, nil
+		},
+	}
+
+	mux := newTestMux(stub)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/jobs/job-resume/stream?after_seq=1", nil)
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("/v1/jobs/{id}/stream のステータスコードが不正です: %d", resp.Code)
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	var events []engine.StreamingEvent
+	for {
+		var evt engine.StreamingEvent
+		if err := dec.Decode(&evt); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			t.Fatalf("resume stream decode error: %v", err)
+		}
+		events = append(events, evt)
+	}
+
+	if len(events) == 0 {
+		t.Fatalf("再開後にイベントが取得できませんでした: %+v", events)
+	}
+	for _, evt := range events {
+		if evt.Seq <= 1 {
+			t.Fatalf("seq が after_seq 以下のイベントが含まれています: %+v", evt)
+		}
+	}
+}
+
 func TestHandlerCancelJob(t *testing.T) {
 	t.Parallel()
 
