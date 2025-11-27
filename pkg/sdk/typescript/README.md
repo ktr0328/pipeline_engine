@@ -62,6 +62,61 @@ await client.updateEngineConfig({ log_level: "debug" });
 
 `client.streamJobs()` は `AsyncIterable<StreamingEvent>` を返すので、Electron では chunk が到着するたびに UI を更新できます。
 
+### ジョブストリームの再開 (`after_seq`)
+
+`streamJobByID(jobID, afterSeq)` を使うと途中で切れたストリームを `seq` 番号から再開できます。最後に受け取った `StreamingEvent.seq` を記録し、次回リクエストで `afterSeq` に渡してください。
+
+```ts
+let resumeSeq = 0;
+
+async function consume(jobID: string) {
+  const stream = await client.streamJobByID(jobID, resumeSeq);
+  for await (const evt of stream) {
+    resumeSeq = evt.seq ?? resumeSeq;
+    renderEvent(evt);
+  }
+}
+```
+
+`after_seq` がサーバー側の履歴とずれた場合は、フルストリーム（`after_seq=0`）で取り直してください。詳しい仕様は [docs/mcp/StreamingResume.md](../../docs/mcp/StreamingResume.md) を参照してください。
+
+## MCP Adapter CLI (`pipeline-engine-mcp`)
+
+`@pipeforge/sdk` には MCP (Model Context Protocol) アダプタ CLI が同梱されています。Node.js 18+ 環境で `npm install -g @pipeforge/sdk` を実行すると `pipeline-engine-mcp` コマンドが利用できます。
+
+```bash
+npm install -g @pipeforge/sdk
+PIPELINE_ENGINE_ADDR="http://127.0.0.1:8085" pipeline-engine-mcp
+```
+
+manifest 例（Claude Desktop / Cursor 用）:
+
+```jsonc
+{
+  "name": "pipeforge",
+  "description": "Pipeline Engine MCP adapter",
+  "commands": [
+    {
+      "command": "pipeline-engine-mcp",
+      "env": {
+        "PIPELINE_ENGINE_ADDR": "http://127.0.0.1:8085",
+        "PIPELINE_ENGINE_OPENAI_API_KEY": "${PIPELINE_ENGINE_OPENAI_API_KEY}"
+      }
+    }
+  ],
+  "tools": [
+    { "name": "startPipeline", "description": "Create job via /v1/jobs" },
+    { "name": "streamJob", "description": "Forward NDJSON events" },
+    { "name": "getJob", "description": "Fetch job result" },
+    { "name": "cancelJob", "description": "Cancel running job" },
+    { "name": "rerunJob", "description": "Rerun job from step" },
+    { "name": "upsertProviderProfile", "description": "Update provider profile" }
+  ]
+}
+```
+
+`streamJob` / `startPipeline(stream=true)` では `tool_event` が逐次送信されます。`params.kind`（`status`/`chunk`/`result`/`error`）と `params.seq` を利用すると、クライアント側でトークン描画や欠落検知が容易になります。manifest の詳細や MCP ホストへの登録手順は [docs/mcp/ManifestGuide.md](../../docs/mcp/ManifestGuide.md) を参照してください。
+
 ## ビルド
 
 ```
