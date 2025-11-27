@@ -1,0 +1,12 @@
+{
+  "name": "@pipeforge/sample-basic",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@pipeforge/sdk": "file:../../../pkg/sdk/typescript",
+    "tsx": "^4.16.2"
+  }
+}

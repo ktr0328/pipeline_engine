@@ -546,6 +546,12 @@ PIPELINE_ENGINE_ENGINE_VERSION=v0.2.0 npm install ./pkg/engine/typescript
 
 詳細は [pkg/sdk/typescript/README.md](pkg/sdk/typescript/README.md) を参照してください。
 
+## サンプルコード
+- `samples/go/basic`: Go SDK を使ったジョブ作成とストリーミングの最小例。`PIPELINE_ENGINE_ADDR` を必要に応じて設定し、`go run ./samples/go/basic` で実行できます。
+- `samples/ts/basic`: TypeScript SDK を使ったストリーミングサンプル。`cd samples/ts/basic && npm install && npm run start` で起動します（ローカルの `pkg/sdk/typescript` を依存関係として参照）。
+
+どちらのサンプルも `pipeline_type` と入力テキストを適宜変更して利用してください。
+
 ## MCP Integration
 Multimodal Connector Protocol (MCP) に対応した薄いアダプタを追加することで、Claude Desktop や Cursor などの MCP クライアントから `pipeline-engine` を直接操作できます。設計のベースラインは次の通りです。
 
