@@ -32,6 +32,8 @@ type EngineClient interface {
 	RerunJob(ctx context.Context, jobID string, payload gosdk.RerunRequest) (*engine.Job, error)
 	UpsertProviderProfile(ctx context.Context, profile engine.ProviderProfile) error
 	StreamExistingJob(ctx context.Context, jobID string, afterSeq uint64) (<-chan engine.StreamingEvent, error)
+	ListPipelines(ctx context.Context) ([]engine.PipelineDef, error)
+	GetMetrics(ctx context.Context) (map[string]map[string]int64, error)
 }
 
 // SDKClient adapts the Go SDK client to EngineClient.
@@ -73,6 +75,14 @@ func (c *SDKClient) StreamExistingJob(ctx context.Context, jobID string, afterSe
 		return c.client.StreamJobByID(ctx, jobID, afterSeq)
 	}
 	return c.client.StreamJobByID(ctx, jobID)
+}
+
+func (c *SDKClient) ListPipelines(ctx context.Context) ([]engine.PipelineDef, error) {
+	return c.client.ListPipelines(ctx)
+}
+
+func (c *SDKClient) GetMetrics(ctx context.Context) (map[string]map[string]int64, error) {
+	return c.client.GetMetrics(ctx)
 }
 
 // Tool describes a MCP tool entry returned from tools/list.
@@ -211,6 +221,10 @@ func (a *Adapter) handleToolCall(ctx context.Context, req rpcRequest) {
 		a.handleUpsertProviderProfile(ctx, req.ID, params.Arguments)
 	case "streamJob":
 		a.handleStreamJob(ctx, req.ID, params.Arguments)
+	case "listPipelines":
+		a.handleListPipelines(ctx, req.ID)
+	case "listMetrics":
+		a.handleListMetrics(ctx, req.ID)
 	default:
 		a.respondError(req.ID, errCodeMethodNotFound, "tool not found", params.ToolName)
 	}
@@ -365,6 +379,24 @@ func (a *Adapter) handleStreamJob(ctx context.Context, id json.RawMessage, raw j
 		a.emitToolEvent("streamJob", evt)
 	}
 	a.respondResult(id, map[string]any{"job_id": args.JobID})
+}
+
+func (a *Adapter) handleListPipelines(ctx context.Context, id json.RawMessage) {
+	defs, err := a.client.ListPipelines(ctx)
+	if err != nil {
+		a.respondError(id, errCodeInternalError, "list pipelines failed", err.Error())
+		return
+	}
+	a.respondResult(id, map[string]any{"pipelines": defs})
+}
+
+func (a *Adapter) handleListMetrics(ctx context.Context, id json.RawMessage) {
+	data, err := a.client.GetMetrics(ctx)
+	if err != nil {
+		a.respondError(id, errCodeInternalError, "list metrics failed", err.Error())
+		return
+	}
+	a.respondResult(id, map[string]any{"metrics": data})
 }
 
 func (a *Adapter) respondResult(id json.RawMessage, result interface{}) {
@@ -563,6 +595,14 @@ func defaultTools() []Tool {
 				"required":   []string{"job_id"},
 				"properties": map[string]any{"job_id": map[string]string{"type": "string"}},
 			},
+		},
+		{
+			Name:        "listPipelines",
+			Description: "List registered pipelines",
+		},
+		{
+			Name:        "listMetrics",
+			Description: "Fetch provider metrics (call count/latency/errors)",
 		},
 	}
 }

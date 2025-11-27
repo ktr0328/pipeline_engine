@@ -28,6 +28,22 @@ export interface StepExecution {
   error?: JobError;
 }
 
+export interface StepDef {
+  id: string;
+  kind: string;
+  name?: string;
+  mode?: string;
+  depends_on?: string[];
+  provider_profile_id?: string;
+  output_type?: string;
+}
+
+export interface PipelineDef {
+  type: string;
+  version: string;
+  steps: StepDef[];
+}
+
 export interface StepChunk {
   step_id: string;
   index: number;

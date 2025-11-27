@@ -6,6 +6,7 @@ import { MCPAdapter } from "./adapter.js";
 import type {
   Job,
   JobRequest,
+  PipelineDef,
   ProviderProfileInput,
   StreamingEvent
 } from "../types.js";
@@ -14,6 +15,8 @@ class StubClient {
   job: Job = { id: "job-1", pipeline_type: "demo", status: "queued", input: { sources: [] } };
   streamedEvents: StreamingEvent[] = [];
   lastAfterSeq?: number;
+  pipelines: PipelineDef[] = [];
+  metrics: Record<string, Record<string, number>> = {};
 
   async createJob(req: JobRequest): Promise<Job> {
     this.job = { ...this.job, pipeline_type: req.pipeline_type };
@@ -56,6 +59,14 @@ class StubClient {
         yield evt;
       }
     })();
+  }
+
+  async listPipelines(): Promise<PipelineDef[]> {
+    return this.pipelines;
+  }
+
+  async getMetrics(): Promise<Record<string, Record<string, number>>> {
+    return this.metrics;
   }
 }
 
@@ -150,4 +161,36 @@ test("streamJob accepts after_seq argument", async () => {
   const adapter = new MCPAdapter({ client, input: streams.input, output: streams.output });
   await adapter.run();
   assert.equal(client.lastAfterSeq, 9);
+});
+
+test("listPipelines tool returns definitions", async () => {
+  const client = new StubClient();
+  client.pipelines = [{ type: "demo", version: "v1", steps: [] }];
+  const streams = makeStreams({
+    jsonrpc: "2.0",
+    id: 5,
+    method: "tools/call",
+    params: { toolName: "listPipelines", arguments: {} }
+  });
+  const adapter = new MCPAdapter({ client, input: streams.input, output: streams.output });
+  await adapter.run();
+  const responses = parseOutputs(streams.chunks);
+  const result = responses.find((msg) => msg.result);
+  assert.equal(result?.result?.pipelines.length, 1);
+});
+
+test("listMetrics tool returns payload", async () => {
+  const client = new StubClient();
+  client.metrics = { provider_call_count: { openai: 2 } };
+  const streams = makeStreams({
+    jsonrpc: "2.0",
+    id: 6,
+    method: "tools/call",
+    params: { toolName: "listMetrics", arguments: {} }
+  });
+  const adapter = new MCPAdapter({ client, input: streams.input, output: streams.output });
+  await adapter.run();
+  const responses = parseOutputs(streams.chunks);
+  const result = responses.find((msg) => msg.result);
+  assert.equal(result?.result?.metrics?.provider_call_count?.openai, 2);
 });

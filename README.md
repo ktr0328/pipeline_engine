@@ -484,6 +484,8 @@ curl -s \
 | `POST` | `/v1/jobs/{id}/rerun` | 同じ入力を使ったリラン、または途中ステップからの再実行 |
 | `POST` | `/v1/config/providers` | ProviderProfile の upsert（API キー差し替え等） |
 | `POST` | `/v1/config/engine` | エンジン設定（例: ログレベル）を更新 |
+| `GET` | `/v1/config/pipelines` | 登録済みパイプライン一覧を返す |
+| `GET` | `/v1/metrics` | Provider メトリクス（call count/latency/errors/chunk）を返す |
 
 ## ドメインモデルの抜粋
 - **Provider / ProviderProfile**: OpenAI や Ollama、画像生成などの外部実行体を `ProviderKind` として抽象化。Step ごとに `ProviderOverride` を与えることでモデルやエンドポイントを上書きできます。
@@ -569,6 +571,8 @@ Multimodal Connector Protocol (MCP) に対応した薄いアダプタを追加�
 | `cancelJob` | `POST /v1/jobs/{id}/cancel` | 実行中ジョブを停止 |
 | `rerunJob` | `POST /v1/jobs/{id}/rerun` | `from_step_id` / `reuse_upstream` を指定した再実行 |
 | `upsertProviderProfile` | `POST /v1/config/providers` | API キーやモデル設定を差し替え |
+| `listPipelines` | `GET /v1/config/pipelines` | 登録済みパイプライン一覧を取得 |
+| `listMetrics` | `GET /v1/metrics` | Provider メトリクスを取得 |
 
 ### Manifest 例 (`pipeforge.mcp.json`)
 MCP クライアントがアダプタを発見できるよう、以下の manifest を `~/Library/Application Support/Claude/pipeforge.mcp.json` などに配置します。

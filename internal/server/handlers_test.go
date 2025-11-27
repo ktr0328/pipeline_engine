@@ -15,6 +15,7 @@ import (
 	"github.com/example/pipeline-engine/internal/engine"
 	"github.com/example/pipeline-engine/internal/server"
 	"github.com/example/pipeline-engine/internal/store"
+	"github.com/example/pipeline-engine/pkg/metrics"
 )
 
 func TestHandlerHealth(t *testing.T) {
@@ -292,7 +293,7 @@ func TestHandlerUpsertProviderProfileInvalidPayload(t *testing.T) {
 	resp := httptest.NewRecorder()
 	mux.ServeHTTP(resp, req)
 	if resp.Code != http.StatusBadRequest {
-		 t.Fatalf("expected 400 when id missing, got %d", resp.Code)
+		t.Fatalf("expected 400 when id missing, got %d", resp.Code)
 	}
 }
 
@@ -308,7 +309,7 @@ func TestHandlerUpdateEngineConfig(t *testing.T) {
 	var payload map[string]string
 	decodeJSON(t, resp.Body.Bytes(), &payload)
 	if payload["log_level"] != "debug" {
-		 t.Fatalf("expected response log_level debug, got %+v", payload)
+		t.Fatalf("expected response log_level debug, got %+v", payload)
 	}
 }
 
@@ -321,7 +322,7 @@ func TestHandlerUpdateEngineConfigRequiresValue(t *testing.T) {
 	resp := httptest.NewRecorder()
 	mux.ServeHTTP(resp, req)
 	if resp.Code != http.StatusBadRequest {
-		 t.Fatalf("expected 400 when no config provided, got %d", resp.Code)
+		t.Fatalf("expected 400 when no config provided, got %d", resp.Code)
 	}
 }
 
@@ -438,12 +439,51 @@ func TestHandlerUnknownActionReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestHandlePipelineList(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubEngine{
+		pipelines: []engine.PipelineDef{{Type: "demo", Version: "v1"}},
+	}
+	mux := newTestMux(stub)
+	req := httptest.NewRequest(http.MethodGet, "/v1/config/pipelines", nil)
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	assertStatus(t, resp.Code, http.StatusOK)
+	var payload struct {
+		Pipelines []engine.PipelineDef `json:"pipelines"`
+	}
+	decodeJSON(t, resp.Body.Bytes(), &payload)
+	if len(payload.Pipelines) != 1 || payload.Pipelines[0].Type != "demo" {
+		t.Fatalf("unexpected pipeline list: %+v", payload)
+	}
+}
+
+func TestHandleMetrics(t *testing.T) {
+	t.Parallel()
+
+	metrics.ObserveProviderCall("openai", time.Millisecond, nil)
+	mux := newTestMux(&stubEngine{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/metrics", nil)
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	assertStatus(t, resp.Code, http.StatusOK)
+	var payload map[string]map[string]int64
+	decodeJSON(t, resp.Body.Bytes(), &payload)
+	if counts := payload["provider_call_count"]; counts == nil || counts["openai"] == 0 {
+		t.Fatalf("metrics payload missing provider_call_count: %+v", payload)
+	}
+}
+
 type stubEngine struct {
 	runJobFunc        func(ctx context.Context, req engine.JobRequest) (*engine.Job, error)
 	runJobStreamFunc  func(ctx context.Context, req engine.JobRequest) (<-chan engine.StreamingEvent, *engine.Job, error)
 	cancelJobFunc     func(ctx context.Context, jobID string, reason string) error
 	getJobFunc        func(ctx context.Context, jobID string) (*engine.Job, error)
 	upsertProfileFunc func(engine.ProviderProfile) error
+	pipelines         []engine.PipelineDef
 }
 
 func (s *stubEngine) RunJob(ctx context.Context, req engine.JobRequest) (*engine.Job, error) {
@@ -479,6 +519,10 @@ func (s *stubEngine) UpsertProviderProfile(profile engine.ProviderProfile) error
 		return errors.New("upsert not implemented")
 	}
 	return s.upsertProfileFunc(profile)
+}
+
+func (s *stubEngine) ListPipelines() []engine.PipelineDef {
+	return s.pipelines
 }
 
 func minimalJob(id string) *engine.Job {

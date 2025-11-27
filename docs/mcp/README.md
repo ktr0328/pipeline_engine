@@ -26,8 +26,8 @@ MCP Host ──(stdio)── MCP Adapter ──(HTTP/JSON)── Pipeline Engine
 | `cancelJob` | 実行中ジョブをキャンセル | `POST /v1/jobs/{id}/cancel` | `reason` を引数で受け取れるようにする |
 | `rerunJob` | `from_step_id`/`reuse_upstream` 付きのリラン | `POST /v1/jobs/{id}/rerun` | 戻り値は新しい Job ID |
 | `upsertProviderProfile` | ProviderProfile を upsert | `POST /v1/config/providers` | API キーや Model を MCP 側で差し替え |
-| `listPipelines` (拡張) | パイプライン定義一覧の取得 | `GET /v1/config/pipelines` (将来) or 手動登録 | IDEで候補を提示するための補助 |
-| `listMetrics` (拡張) | `expvar` の主要メトリクスを取得 | `GET /debug/vars` | Provider 呼び出し統計の可視化 |
+| `listPipelines` | パイプライン定義一覧の取得 | `GET /v1/config/pipelines` | IDEで候補を提示するための補助 |
+| `listMetrics` | Provider メトリクスを取得 | `GET /v1/metrics` | Provider 呼び出し統計の可視化 |
 
 ## 4. ストリーミングイベントのマッピング
 - HTTP では 1 行ごとの NDJSON (`event`, `data`, `job_id` 等) を送出している。Adapter はこれを読み取り、MCP の `tool_event` (`{"jsonrpc":"2.0","method":"tool_event","params":{"toolName":"startPipeline","event":"job_status","kind":"status","payload":{...}}}`) として逐次通知する。

@@ -80,6 +80,17 @@ async function consume(jobID: string) {
 
 `after_seq` がサーバー側の履歴とずれた場合は、フルストリーム（`after_seq=0`）で取り直してください。詳しい仕様は [docs/mcp/StreamingResume.md](../../docs/mcp/StreamingResume.md) を参照してください。
 
+### パイプライン一覧・メトリクス取得
+
+```ts
+const pipelines = await client.listPipelines();
+const metrics = await client.getMetrics();
+console.log(pipelines.map((p) => p.type));
+console.log(metrics.provider_call_count);
+```
+
+`listPipelines()` は `/v1/config/pipelines` のラッパーで登録済みの PipelineDef を返し、`getMetrics()` は `/v1/metrics` の `provider_call_count` / `provider_call_latency` などをまとめて返します。
+
 ## MCP Adapter CLI (`pipeline-engine-mcp`)
 
 `@pipeforge/sdk` には MCP (Model Context Protocol) アダプタ CLI が同梱されています。Node.js 18+ 環境で `npm install -g @pipeforge/sdk` を実行すると `pipeline-engine-mcp` コマンドが利用できます。

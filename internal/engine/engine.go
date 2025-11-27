@@ -30,6 +30,7 @@ type Engine interface {
 	RunJobStream(ctx context.Context, req JobRequest) (<-chan StreamingEvent, *Job, error)
 	CancelJob(ctx context.Context, jobID string, reason string) error
 	GetJob(ctx context.Context, jobID string) (*Job, error)
+	ListPipelines() []PipelineDef
 	UpsertProviderProfile(profile ProviderProfile) error
 }
 
@@ -402,6 +403,18 @@ func (e *BasicEngine) removeJobPipeline(jobID string) {
 	e.jobPipeMu.Lock()
 	defer e.jobPipeMu.Unlock()
 	delete(e.jobPipeline, jobID)
+}
+
+func (e *BasicEngine) ListPipelines() []PipelineDef {
+	e.pipelineMu.RLock()
+	defer e.pipelineMu.RUnlock()
+	defs := make([]PipelineDef, 0, len(e.pipelines))
+	for _, def := range e.pipelines {
+		if def != nil {
+			defs = append(defs, *clonePipeline(def))
+		}
+	}
+	return defs
 }
 
 func (e *BasicEngine) UpsertProviderProfile(profile ProviderProfile) error {

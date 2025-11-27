@@ -30,7 +30,9 @@ Claude Desktop や Cursor などの MCP ホストから `pipeline-engine` を利
     { "name": "getJob", "description": "Fetch job result" },
     { "name": "cancelJob", "description": "Cancel running job" },
     { "name": "rerunJob", "description": "Rerun job from step" },
-    { "name": "upsertProviderProfile", "description": "Update provider profile" }
+    { "name": "upsertProviderProfile", "description": "Update provider profile" },
+    { "name": "listPipelines", "description": "List available pipeline defs" },
+    { "name": "listMetrics", "description": "Fetch provider metrics" }
   ]
 }
 ```

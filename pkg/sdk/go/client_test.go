@@ -187,3 +187,49 @@ func TestClientUpsertProviderProfile(t *testing.T) {
 		t.Fatalf("received profile mismatch: %+v", received)
 	}
 }
+
+func TestClientListPipelines(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/config/pipelines" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"pipelines": []engine.PipelineDef{{Type: "demo", Version: "v1"}},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	pipes, err := client.ListPipelines(context.Background())
+	if err != nil {
+		t.Fatalf("ListPipelines failed: %v", err)
+	}
+	if len(pipes) != 1 || pipes[0].Type != "demo" {
+		t.Fatalf("unexpected pipelines: %+v", pipes)
+	}
+}
+
+func TestClientGetMetrics(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/metrics" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]map[string]int64{
+			"provider_call_count": {"openai": 3},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	data, err := client.GetMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GetMetrics failed: %v", err)
+	}
+	if data["provider_call_count"]["openai"] != 3 {
+		t.Fatalf("unexpected metrics: %+v", data)
+	}
+}

@@ -328,3 +328,47 @@ func (c *Client) StreamJobByID(ctx context.Context, jobID string, afterSeq ...ui
 	}()
 	return ch, nil
 }
+
+func (c *Client) ListPipelines(ctx context.Context) ([]engine.PipelineDef, error) {
+	url := c.BaseURL + "/v1/config/pipelines"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("http error: %s", resp.Status)
+	}
+	var payload struct {
+		Pipelines []engine.PipelineDef `json:"pipelines"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	return payload.Pipelines, nil
+}
+
+func (c *Client) GetMetrics(ctx context.Context) (map[string]map[string]int64, error) {
+	url := c.BaseURL + "/v1/metrics"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("http error: %s", resp.Status)
+	}
+	var payload map[string]map[string]int64
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}

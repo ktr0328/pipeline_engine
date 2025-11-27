@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"expvar"
+
 	"github.com/example/pipeline-engine/internal/engine"
 	"github.com/example/pipeline-engine/internal/store"
 	"github.com/example/pipeline-engine/pkg/logging"
@@ -83,6 +85,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/jobs/", h.handleJobOps)
 	mux.HandleFunc("/v1/config/providers", h.handleProviderConfig)
 	mux.HandleFunc("/v1/config/engine", h.handleEngineConfig)
+	mux.HandleFunc("/v1/config/pipelines", h.handlePipelineList)
+	mux.HandleFunc("/v1/metrics", h.handleMetrics)
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +202,29 @@ func (h *Handler) handleEngineConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) handlePipelineList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	pipelines := h.engine.ListPipelines()
+	writeJSON(w, http.StatusOK, map[string]any{"pipelines": pipelines})
+}
+
+func (h *Handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	payload := map[string]any{
+		"provider_call_count":   snapshotExpvarMap("provider_call_count"),
+		"provider_call_latency": snapshotExpvarMap("provider_call_latency_ms"),
+		"provider_call_errors":  snapshotExpvarMap("provider_call_errors"),
+		"provider_chunk_count":  snapshotExpvarMap("provider_chunk_count"),
+	}
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func (h *Handler) createJob(w http.ResponseWriter, r *http.Request) {
@@ -508,4 +535,22 @@ func (h *Handler) lastLoggedEvent(jobID string) *engine.StreamingEvent {
 
 func writeMethodNotAllowed(w http.ResponseWriter) {
 	writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", nil)
+}
+
+func snapshotExpvarMap(name string) map[string]int64 {
+	result := map[string]int64{}
+	v := expvar.Get(name)
+	if v == nil {
+		return result
+	}
+	m, ok := v.(*expvar.Map)
+	if !ok {
+		return result
+	}
+	m.Do(func(kv expvar.KeyValue) {
+		if iv, ok := kv.Value.(*expvar.Int); ok {
+			result[kv.Key] = iv.Value()
+		}
+	})
+	return result
 }

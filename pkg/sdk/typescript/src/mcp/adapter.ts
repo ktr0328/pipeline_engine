@@ -4,6 +4,7 @@ import type { PipelineEngineClient } from "../client.js";
 import type {
   Job,
   JobRequest,
+  PipelineDef,
   ProviderProfileInput,
   StreamingEvent
 } from "../types.js";
@@ -30,6 +31,8 @@ export interface MCPClient {
   rerunJob(jobID: string, payload: Record<string, unknown>): Promise<Job>;
   upsertProviderProfile(profile: ProviderProfileInput): Promise<void>;
   streamJobByID(jobID: string, afterSeq?: number): Promise<AsyncIterable<StreamingEvent>>;
+  listPipelines(): Promise<PipelineDef[]>;
+  getMetrics(): Promise<Record<string, Record<string, number>>>;
 }
 
 export interface ToolDefinition {
@@ -152,6 +155,12 @@ export class MCPAdapter {
       case "streamJob":
         await this.handleStreamJob(req.id, params.arguments ?? {});
         break;
+      case "listPipelines":
+        await this.handleListPipelines(req.id);
+        break;
+      case "listMetrics":
+        await this.handleListMetrics(req.id);
+        break;
       default:
         this.respondError(req.id ?? null, -32601, "tool not found", params.toolName);
     }
@@ -240,6 +249,16 @@ export class MCPAdapter {
       this.emitToolEvent("streamJob", evt);
     }
     this.respondResult(id, { job_id: args.job_id });
+  }
+
+  private async handleListPipelines(id: RPCRequest["id"]): Promise<void> {
+    const pipelines = await this.client.listPipelines();
+    this.respondResult(id, { pipelines });
+  }
+
+  private async handleListMetrics(id: RPCRequest["id"]): Promise<void> {
+    const metrics = await this.client.getMetrics();
+    this.respondResult(id, { metrics });
   }
 
   private respondResult(id: RPCRequest["id"], result: any): void {
@@ -372,6 +391,14 @@ function defaultTools(): ToolDefinition[] {
           default_model: { type: "string" }
         }
       }
+    },
+    {
+      name: "listPipelines",
+      description: "List registered pipelines"
+    },
+    {
+      name: "listMetrics",
+      description: "Fetch provider metrics"
     }
   ];
 }
@@ -384,6 +411,8 @@ export function createMCPAdapterClient(client: PipelineEngineClient): MCPClient 
     cancelJob: (id, reason) => client.cancelJob(id, reason),
     rerunJob: (id, payload) => client.rerunJob(id, payload),
     upsertProviderProfile: (profile) => client.upsertProviderProfile(profile),
-    streamJobByID: (id, afterSeq) => client.streamJobByID(id, afterSeq)
+    streamJobByID: (id, afterSeq) => client.streamJobByID(id, afterSeq),
+    listPipelines: () => client.listPipelines(),
+    getMetrics: () => client.getMetrics()
   };
 }

@@ -92,3 +92,19 @@ test("streamJobByID yields historical events", async () => {
   assert.deepEqual(seen, ["job_status", "job_completed"]);
   assert.equal(capturedUrl.endsWith("/v1/jobs/job-3/stream?after_seq=5"), true);
 });
+
+test("listPipelines fetches definitions", async () => {
+  const fetchMock: FetchLike = async () => jsonResponse({ pipelines: [{ type: "demo", version: "v1", steps: [] }] });
+  const client = new PipelineEngineClient({ baseUrl: "http://localhost:8085", fetch: fetchMock });
+  const pipelines = await client.listPipelines();
+  assert.equal(pipelines.length, 1);
+  assert.equal(pipelines[0].type, "demo");
+});
+
+test("getMetrics returns payload", async () => {
+  const fetchMock: FetchLike = async () =>
+    jsonResponse({ provider_call_count: { openai: 5 }, provider_call_latency: { openai: 10 } });
+  const client = new PipelineEngineClient({ baseUrl: "http://localhost:8085", fetch: fetchMock });
+  const metrics = await client.getMetrics();
+  assert.equal(metrics.provider_call_count.openai, 5);
+});

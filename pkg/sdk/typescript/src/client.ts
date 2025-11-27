@@ -3,6 +3,7 @@ import {
   FetchLike,
   Job,
   JobRequest,
+  PipelineDef,
   ProviderProfileInput,
   StreamingEvent
 } from "./types.js";
@@ -177,5 +178,22 @@ export class PipelineEngineClient {
         await reader.cancel().catch(() => void 0);
       }
     })();
+  }
+
+  async listPipelines(): Promise<PipelineDef[]> {
+    const resp = await this.fetchImpl(`${this.baseUrl}/v1/config/pipelines`);
+    if (!resp.ok) {
+      throw new Error(`http error: ${resp.status} ${resp.statusText}`);
+    }
+    const json = await resp.json();
+    return (json.pipelines as PipelineDef[]) ?? [];
+  }
+
+  async getMetrics(): Promise<Record<string, Record<string, number>>> {
+    const resp = await this.fetchImpl(`${this.baseUrl}/v1/metrics`);
+    if (!resp.ok) {
+      throw new Error(`http error: ${resp.status} ${resp.statusText}`);
+    }
+    return resp.json();
   }
 }

@@ -239,6 +239,50 @@ func TestAdapterStreamJobAfterSeq(t *testing.T) {
 	}
 }
 
+func TestAdapterListPipelinesTool(t *testing.T) {
+	client := &stubClient{
+		pipelines: []engine.PipelineDef{{Type: "demo", Version: "v1"}},
+	}
+	req := `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"toolName":"listPipelines","arguments":{}}}`
+	var buf bytes.Buffer
+	a := NewAdapter(Options{Client: client, Reader: strings.NewReader(req), Writer: &buf})
+	if err := a.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	var resp rpcResponse
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	result, _ := resp.Result.(map[string]any)
+	pipes, _ := result["pipelines"].([]interface{})
+	if len(pipes) != 1 {
+		t.Fatalf("unexpected pipelines payload: %+v", result)
+	}
+}
+
+func TestAdapterListMetricsTool(t *testing.T) {
+	client := &stubClient{
+		metrics: map[string]map[string]int64{
+			"provider_call_count": {"openai": 1},
+		},
+	}
+	req := `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"toolName":"listMetrics","arguments":{}}}`
+	var buf bytes.Buffer
+	a := NewAdapter(Options{Client: client, Reader: strings.NewReader(req), Writer: &buf})
+	if err := a.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	var resp rpcResponse
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	result, _ := resp.Result.(map[string]any)
+	metricsPayload, _ := result["metrics"].(map[string]any)
+	if metricsPayload["provider_call_count"] == nil {
+		t.Fatalf("expected metrics in response: %+v", result)
+	}
+}
+
 type stubClient struct {
 	createReq       *engine.JobRequest
 	createJobResult *engine.Job
@@ -250,6 +294,8 @@ type stubClient struct {
 	cancelJobResult *engine.Job
 	rerunJobResult  *engine.Job
 	profiles        []engine.ProviderProfile
+	pipelines       []engine.PipelineDef
+	metrics         map[string]map[string]int64
 }
 
 func (s *stubClient) CreateJob(ctx context.Context, req engine.JobRequest) (*engine.Job, error) {
@@ -299,6 +345,14 @@ func (s *stubClient) StreamExistingJob(ctx context.Context, jobID string, afterS
 		}
 	}()
 	return ch, nil
+}
+
+func (s *stubClient) ListPipelines(ctx context.Context) ([]engine.PipelineDef, error) {
+	return s.pipelines, nil
+}
+
+func (s *stubClient) GetMetrics(ctx context.Context) (map[string]map[string]int64, error) {
+	return s.metrics, nil
 }
 
 func sampleJob(id string) *engine.Job {
